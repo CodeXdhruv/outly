@@ -1,0 +1,53 @@
+{
+  "name": "reachinbox-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "tsx watch src/index.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "start:api": "node dist/index.js",
+    "start:worker": "node dist/worker.js",
+    "start:all": "RUN_WORKER=true node dist/index.js",
+    "build:all": "tsc && cd ../frontend && npm install && npm run build",
+    "reindex": "tsx src/scripts/reindex.ts",
+    "loadtest": "tsx src/scripts/loadtest.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bull-board/api": "^6.7.8",
+    "@bull-board/express": "^6.7.8",
+    "@elastic/elasticsearch": "^8.17.0",
+    "@prisma/client": "^5.22.0",
+    "bullmq": "^5.41.6",
+    "connect-redis": "^8.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "google-auth-library": "^9.15.1",
+    "ioredis": "^5.4.2",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.10.0",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0",
+    "sanitize-html": "^2.14.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/express-session": "^1.18.1",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^20.17.19",
+    "@types/nodemailer": "^6.4.17",
+    "@types/sanitize-html": "^2.13.0",
+    "@types/supertest": "^6.0.2",
+    "pino-pretty": "^13.0.0",
+    "prisma": "^5.22.0",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

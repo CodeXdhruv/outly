@@ -1,0 +1,139 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String            @id @default(uuid())
+  googleSubject String            @unique
+  email         String
+  name          String
+  avatarUrl     String?
+  senders       Sender[]
+  campaigns     Campaign[]
+  emails        Email[]
+  attachments   Attachment[]
+  slack         SlackConnection?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model Sender {
+  id        String            @id @default(uuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromEmail String
+  enabled   Boolean           @default(true)
+  campaigns Campaign[]
+  emails    Email[]
+  events    RateLimitEvent[]
+
+  @@unique([userId, fromEmail])
+  @@index([userId])
+}
+
+model Campaign {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         Sender       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  subject        String
+  bodyHtml       String
+  bodyText       String
+  startAt        DateTime
+  delaySeconds   Int
+  hourlyLimit    Int
+  status         String       // scheduled | completed
+  idempotencyKey String
+  totalCount     Int
+  emails         Email[]
+  attachments    Attachment[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([senderId])
+}
+
+model Attachment {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  filename   String
+  mimeType   String
+  size       Int
+  data       Bytes
+  createdAt  DateTime  @default(now())
+
+  @@index([campaignId])
+  @@index([userId])
+}
+
+model Email {
+  id                String    @id @default(uuid())
+  campaignId        String
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  senderId          String
+  sender            Sender    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  recipientEmail    String
+  subject           String
+  preview           String
+  scheduledAt       DateTime
+  sentAt            DateTime?
+  status            String    // scheduled | processing | sent | failed
+  starred           Boolean   @default(false)
+  attemptCount      Int       @default(0)
+  deferredCount     Int       @default(0)
+  bullJobId         String    @unique // "email_<id>"
+  providerMessageId String?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  searchSyncedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([campaignId, recipientEmail])
+  @@index([userId, status, scheduledAt])
+  @@index([userId, status, sentAt])
+  @@index([campaignId])
+  @@index([senderId])
+}
+
+model SlackConnection {
+  id                   String    @id @default(uuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId               String
+  teamName             String
+  channel              String?
+  encryptedWebhookUrl  String
+  encryptedAccessToken String
+  scope                String
+  revokedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model RateLimitEvent {
+  id               String   @id @default(uuid())
+  senderId         String
+  sender           Sender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  eventType        String   // HOURLY_LIMIT_HIT
+  hourWindowStart  DateTime
+  status           String   // notified | skipped_no_slack | failed
+  createdAt        DateTime @default(now())
+
+  @@unique([senderId, eventType, hourWindowStart])
+  @@index([senderId])
+}
