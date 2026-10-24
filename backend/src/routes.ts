@@ -32,7 +32,29 @@ const ALLOWED_MIME_TYPES = new Set([
 const ALLOWED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'csv']);
 
 // 1. Current user
-routes.get('/api/me', (req: Request, res: Response) => {
+routes.get('/api/me', async (req: Request, res: Response) => {
+  const ticket = req.query.auth_ticket as string || req.headers['x-auth-ticket'] as string;
+  if (ticket && !req.session?.user) {
+    try {
+      const userId = await redis.get(`auth_ticket:${ticket}`);
+      if (userId) {
+        await redis.del(`auth_ticket:${ticket}`);
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (user) {
+          req.session.user = {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            avatarUrl: user.avatarUrl,
+          };
+          await new Promise<void>((resolve) => req.session.save(() => resolve()));
+        }
+      }
+    } catch (e) {
+      logger.error(e, 'Failed to redeem auth ticket');
+    }
+  }
+
   if (!req.session?.user) {
     res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Not logged in' } });
     return;

@@ -17,8 +17,24 @@ export function useAuth() {
   const query = useQuery<User | null>({
     queryKey: ['auth', 'me'],
     queryFn: async () => {
-      const res = await fetch('/api/me');
-      if (res.status === 401) return null;
+      const urlParams = new URLSearchParams(window.location.search);
+      const ticket = urlParams.get('auth_ticket') || localStorage.getItem('auth_ticket');
+      if (urlParams.get('auth_ticket')) {
+        localStorage.setItem('auth_ticket', urlParams.get('auth_ticket')!);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      const headers: Record<string, string> = {};
+      if (ticket) headers['x-auth-ticket'] = ticket;
+
+      const res = await fetch(`/api/me${ticket ? `?auth_ticket=${ticket}` : ''}`, {
+        headers,
+        credentials: 'include',
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('auth_ticket');
+        return null;
+      }
       if (!res.ok) throw new Error('Failed to fetch user');
       return res.json();
     },

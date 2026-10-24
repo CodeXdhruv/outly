@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { config } from './config.js';
-import { prisma } from './db.js';
+import { prisma, redis } from './db.js';
 import { logger } from './config.js';
 
 export const googleClient = new OAuth2Client(
@@ -195,7 +195,7 @@ export function setupAuthRoutes(app: any) {
 
       await seedSendersForUser(user.id, user.email);
 
-      req.session.regenerate((err) => {
+      req.session.regenerate(async (err) => {
         if (err) {
           logger.error(err, 'Session regenerate error');
           res.redirect(`${config.WEB_ORIGIN}/login?error=session`);
@@ -209,8 +209,11 @@ export function setupAuthRoutes(app: any) {
           avatarUrl: user.avatarUrl,
         };
 
+        const authTicket = crypto.randomBytes(24).toString('hex');
+        await redis.set(`auth_ticket:${authTicket}`, user.id, 'EX', 60);
+
         req.session.save(() => {
-          res.redirect(`${config.WEB_ORIGIN}/scheduled`);
+          res.redirect(`${config.WEB_ORIGIN}/scheduled?auth_ticket=${authTicket}`);
         });
       });
     } catch (err) {
