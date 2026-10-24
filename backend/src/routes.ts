@@ -2,13 +2,13 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { prisma } from './db.js';
+import { prisma, redis } from './db.js';
 import { requireAuth } from './auth.js';
 import { parseRecipients, sanitizeBody } from './email.js';
 import { enqueueEmailsBulk } from './queue.js';
 import { searchEmails, bulkIndexEmails } from './search.js';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { logger } from './config.js';
 
 export const routes = Router();
 
