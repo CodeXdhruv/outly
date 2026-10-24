@@ -72,43 +72,46 @@ export const LandingPage: React.FC = () => {
 
             {/* Minimalist Dashboard Preview Card */}
             <div className="mt-16 max-w-4xl mx-auto rounded-xl border border-slate-200/90 shadow-sm overflow-hidden bg-white text-left">
-              {/* Window Header */}
-              <div className="h-10 bg-slate-50/80 border-b border-slate-200 px-4 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-slate-300" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-slate-300" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+              {/* Window Header with Red/Yellow/Green macOS window dots */}
+              <div className="h-10 bg-slate-50 border-b border-slate-200 px-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E]/40 shadow-xs" />
+                  <div className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]/40 shadow-xs" />
+                  <div className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]/40 shadow-xs" />
                 </div>
-                <div className="text-[11px] text-slate-400 font-mono">
-                  app.reachinbox.ai
+                <div className="text-[11px] text-slate-500 font-mono bg-white px-3 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  app.reachinbox.ai/scheduler
                 </div>
-                <div className="w-10" />
+                <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-600 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>worker: online</span>
+                </div>
               </div>
 
               {/* Clean Preview Content */}
-              <div className="p-6 bg-slate-50/40">
+              <div className="p-6 bg-slate-50/40 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="bg-white p-4 rounded-lg border border-slate-200/80 shadow-2xs">
+                  <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
                     <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Scheduled Queue</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Scheduled Queue</span>
                       <Clock className="w-4 h-4 text-indigo-500" />
                     </div>
                     <div className="mt-2 text-2xl font-bold font-display text-slate-900">Active</div>
                     <span className="text-xs text-slate-500 mt-1 inline-block">BullMQ persistent delayed jobs</span>
                   </div>
 
-                  <div className="bg-white p-4 rounded-lg border border-slate-200/80 shadow-2xs">
+                  <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
                     <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Rate Limiter</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rate Limiter</span>
                       <Zap className="w-4 h-4 text-amber-500" />
                     </div>
                     <div className="mt-2 text-2xl font-bold font-display text-slate-900">Enforced</div>
                     <span className="text-xs text-slate-500 mt-1 inline-block">Atomic Redis Lua token bucket</span>
                   </div>
 
-                  <div className="bg-white p-4 rounded-lg border border-slate-200/80 shadow-2xs">
+                  <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
                     <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Restart Proof</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Restart Proof</span>
                       <ShieldCheck className="w-4 h-4 text-emerald-500" />
                     </div>
                     <div className="mt-2 text-2xl font-bold font-display text-slate-900">100%</div>
@@ -116,20 +119,37 @@ export const LandingPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Example Queue Row */}
-                <div className="mt-4 bg-white rounded-lg border border-slate-200/80 p-3.5 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                      <Mail className="w-3.5 h-3.5" />
+                {/* Live Queue Items Demo */}
+                <div className="space-y-2">
+                  <div className="bg-white rounded-xl border border-slate-200/80 p-3.5 flex items-center justify-between text-xs hover:border-slate-300 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                        <Mail className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="truncate">
+                        <span className="font-semibold text-slate-900">Quarterly Product Roadmap Updates</span>
+                        <span className="text-slate-400 ml-2">to alex.morgan@stripe.com</span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="font-semibold text-slate-900">Quarterly Product Roadmap Updates</span>
-                      <span className="text-slate-400 ml-2">to alex.morgan@stripe.com</span>
+                    <div className="flex items-center gap-1.5 text-emerald-600 font-medium shrink-0 ml-3">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Dispatched via SMTP</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-emerald-600 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Dispatched via Ethereal SMTP</span>
+
+                  <div className="bg-white rounded-xl border border-slate-200/80 p-3.5 flex items-center justify-between text-xs hover:border-slate-300 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                        <Clock className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="truncate">
+                        <span className="font-semibold text-slate-900">Partnership Proposal: Outreach Automation</span>
+                        <span className="text-slate-400 ml-2">to partnerships@slack.com</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-indigo-600 font-medium shrink-0 ml-3 bg-indigo-50 px-2.5 py-0.5 rounded-full font-mono text-[11px]">
+                      <span>scheduled in 4m 12s</span>
+                    </div>
                   </div>
                 </div>
               </div>
