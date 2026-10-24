@@ -115,24 +115,49 @@ export function setupAuthRoutes(app: any) {
       return;
     }
 
-    const state = crypto.randomBytes(32).toString('hex');
-    (req.session as any).oauthState = state;
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const exp = Date.now() + 15 * 60 * 1000;
+    const payload = JSON.stringify({ nonce, exp });
+    const payloadBase64 = Buffer.from(payload).toString('base64url');
+    const hmac = crypto.createHmac('sha256', config.SESSION_SECRET).update(payloadBase64).digest('base64url');
+    const signedState = `${payloadBase64}.${hmac}`;
+
+    (req.session as any).oauthState = signedState;
 
     const url = googleClient.generateAuthUrl({
       access_type: 'offline',
       scope: ['openid', 'email', 'profile'],
-      state,
+      state: signedState,
       prompt: 'consent',
     });
 
-    res.redirect(url);
+    req.session.save((err) => {
+      if (err) logger.error(err, 'Failed to save session before Google redirect');
+      res.redirect(url);
+    });
   });
 
   app.get('/auth/google/callback', async (req: Request, res: Response) => {
     try {
       const { code, state } = req.query;
       const expectedState = (req.session as any)?.oauthState;
-      if (!state || state !== expectedState) {
+
+      // Verify either stored session state or valid HMAC signature
+      let isValidState = Boolean(state && expectedState && state === expectedState);
+      if (!isValidState && typeof state === 'string') {
+        try {
+          const [payloadBase64, hmac] = state.split('.');
+          const expectedHmac = crypto.createHmac('sha256', config.SESSION_SECRET).update(payloadBase64).digest('base64url');
+          if (payloadBase64 && hmac && hmac === expectedHmac) {
+            const data = JSON.parse(Buffer.from(payloadBase64, 'base64url').toString('utf8'));
+            if (Date.now() <= data.exp) {
+              isValidState = true;
+            }
+          }
+        } catch {}
+      }
+
+      if (!isValidState) {
         res.status(400).send('Invalid OAuth state');
         return;
       }
