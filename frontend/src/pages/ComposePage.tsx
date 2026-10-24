@@ -1,41 +1,43 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Paperclip, X, AlertCircle } from 'lucide-react';
-import { RecipientInput } from '../components/RecipientInput';
+import { 
+  Check, 
+  Upload, 
+  X, 
+  Clock, 
+  Send, 
+  ArrowRight, 
+  ArrowLeft, 
+  AlertCircle, 
+  Sparkles
+} from 'lucide-react';
 import { RichEditor } from '../components/RichEditor';
-import { SendLaterPopover } from '../components/SendLaterPopover';
-import { ConfirmSendDialog } from '../components/ConfirmSendDialog';
 import type { Sender } from '../types';
 
 export const ComposePage: React.FC = () => {
   const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
-  // Stable idempotency key for this compose session
-  const [idempotencyKey] = React.useState(() => crypto.randomUUID());
+  // Form states
+  const [senderId, setSenderId] = useState('');
+  const [subject, setSubject] = useState('');
+  const [bodyHtml, setBodyHtml] = useState('');
+  const [recipients, setRecipients] = useState<string[]>([]);
+  const [rawLeadInput, setRawLeadInput] = useState('');
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 5);
+    return d.toISOString().slice(0, 16);
+  });
+  const [delaySeconds, setDelaySeconds] = useState(30);
+  const [hourlyLimit, setHourlyLimit] = useState(200);
+  const [attachments] = useState<Array<{ id: string; filename: string; size: number }>>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Form State
-  const [senderId, setSenderId] = React.useState('');
-  const [recipients, setRecipients] = React.useState<string[]>([]);
-  const [subject, setSubject] = React.useState('');
-  const [bodyHtml, setBodyHtml] = React.useState('');
-  const [delaySeconds, setDelaySeconds] = React.useState(2);
-  const [hourlyLimit, setHourlyLimit] = React.useState(100);
-
-  // Attachments state
-  const [attachments, setAttachments] = React.useState<
-    Array<{ id: string; filename: string; size: number }>
-  >([]);
-  const [isUploadingAttachment, setIsUploadingAttachment] = React.useState(false);
-  const attachmentInputRef = React.useRef<HTMLInputElement>(null);
-
-  // Confirmation dialog & submission
-  const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const [scheduledDate, setScheduledDate] = React.useState<Date>(new Date());
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-
-  // Fetch Senders
+  // Fetch senders
   const { data: senders } = useQuery<Sender[]>({
     queryKey: ['senders'],
     queryFn: async () => {
@@ -45,71 +47,67 @@ export const ComposePage: React.FC = () => {
     },
   });
 
-  // Set default sender
   React.useEffect(() => {
     if (senders && senders.length > 0 && !senderId) {
       setSenderId(senders[0].id);
     }
   }, [senders, senderId]);
 
-  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle parsing CSV / txt
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (attachments.length >= 3) {
-      alert('Maximum 3 attachments per campaign allowed.');
-      return;
-    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const emails = (text.match(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g) || []).map((em) => em.toLowerCase().trim());
+      const merged = Array.from(new Set([...recipients, ...emails]));
+      setRecipients(merged);
+    };
+    reader.readAsText(file);
+  };
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Attachment size cannot exceed 2 MB.');
-      return;
-    }
-
-    setIsUploadingAttachment(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const res = await fetch('/api/attachments', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        alert(err.error?.message || 'Attachment upload failed');
-        return;
-      }
-
-      const data = await res.json();
-      setAttachments((prev) => [...prev, data]);
-    } catch {
-      alert('Network error uploading attachment');
-    } finally {
-      setIsUploadingAttachment(false);
-      if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+  const handleAddRawEmail = () => {
+    if (!rawLeadInput.trim()) return;
+    const emails = (rawLeadInput.match(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g) || []).map((em) => em.toLowerCase().trim());
+    if (emails.length > 0) {
+      setRecipients((prev) => Array.from(new Set([...prev, ...emails])));
+      setRawLeadInput('');
     }
   };
 
-  const removeAttachment = (id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  const removeRecipient = (email: string) => {
+    setRecipients((prev) => prev.filter((r) => r !== email));
   };
 
-  const handleOpenConfirm = (targetDate: Date) => {
+  // Steps definition
+  const steps = [
+    { number: 1, label: 'Content' },
+    { number: 2, label: 'Leads' },
+    { number: 3, label: 'Schedule' },
+    { number: 4, label: 'Review' },
+  ];
+
+  // Calculated estimates
+  const recipientCount = recipients.length;
+  const totalDurationMinutes = recipientCount > 0 ? Math.ceil((recipientCount * delaySeconds) / 60) : 0;
+  const durationHours = Math.floor(totalDurationMinutes / 60);
+  const durationRemainingMinutes = totalDurationMinutes % 60;
+  const formattedDuration = durationHours > 0 
+    ? `~${durationHours} hour${durationHours > 1 ? 's' : ''} ${durationRemainingMinutes} minutes` 
+    : `~${durationRemainingMinutes} minutes`;
+
+  const handleExecuteSend = async () => {
     if (recipients.length === 0) {
-      alert('Please add at least one recipient.');
+      setErrorMessage('Please add at least one recipient lead.');
       return;
     }
     if (!subject.trim()) {
-      alert('Please enter an email subject.');
+      setErrorMessage('Please provide a campaign subject line.');
       return;
     }
-    setScheduledDate(targetDate);
-    setConfirmOpen(true);
-  };
 
-  const handleExecuteSend = async () => {
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -125,7 +123,7 @@ export const ComposePage: React.FC = () => {
           recipients,
           subject,
           bodyHtml,
-          startAt: scheduledDate.toISOString(),
+          startAt: new Date(startDate).toISOString(),
           delaySeconds: Number(delaySeconds),
           hourlyLimit: Number(hourlyLimit),
           attachmentIds: attachments.map((a) => a.id),
@@ -140,7 +138,6 @@ export const ComposePage: React.FC = () => {
       }
 
       await res.json();
-      setConfirmOpen(false);
       navigate('/scheduled');
     } catch (err: any) {
       setErrorMessage(err.message || 'Network error scheduling campaign');
@@ -148,172 +145,415 @@ export const ComposePage: React.FC = () => {
     }
   };
 
-  const selectedSenderEmail =
-    senders?.find((s) => s.id === senderId)?.fromEmail || 'Loading...';
-
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-neutral-950">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-neutral-800 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-white tracking-tight">Compose Campaign</h1>
-        <div className="text-xs text-neutral-400 font-mono">
-          Key: {idempotencyKey.slice(0, 8)}...
-        </div>
+    <div className="p-8 max-w-5xl mx-auto space-y-6">
+      {/* Page Title */}
+      <div>
+        <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-900 tracking-tight">
+          Compose New Email
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Upload your leads, write your message and schedule your campaign.
+        </p>
       </div>
 
-      {/* Main Form */}
-      <div className="flex-1 overflow-y-auto p-6 max-w-4xl space-y-5">
-        {errorMessage && (
-          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center gap-3 text-rose-300 text-xs">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>{errorMessage}</span>
+      {/* 4-Step Stepper Header */}
+      <div className="flex items-center justify-between max-w-xl py-2">
+        {steps.map((st, idx) => {
+          const isActive = currentStep === st.number;
+          const isDone = currentStep > st.number;
+          return (
+            <React.Fragment key={st.number}>
+              <div 
+                onClick={() => setCurrentStep(st.number as any)}
+                className="flex items-center gap-2.5 cursor-pointer group"
+              >
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-sm ring-4 ring-indigo-50'
+                      : isDone
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'
+                  }`}
+                >
+                  {isDone ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : st.number}
+                </div>
+                <span
+                  className={`text-xs font-medium ${
+                    isActive ? 'text-slate-900 font-semibold' : 'text-slate-500'
+                  }`}
+                >
+                  {st.label}
+                </span>
+              </div>
+              {idx < steps.length - 1 && (
+                <div className="flex-1 h-0.5 bg-slate-200 mx-3" />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {errorMessage && (
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-2.5 text-rose-700 text-xs">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* Step 1: Content */}
+      {currentStep === 1 && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">From Sender</label>
+              <select
+                value={senderId}
+                onChange={(e) => setSenderId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              >
+                {senders?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.fromEmail}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Subject</label>
+              <input
+                type="text"
+                placeholder="Enter a compelling subject line..."
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Email Body</label>
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+                <RichEditor value={bodyHtml} onChange={setBodyHtml} />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-between items-center">
+              <span className="text-xs text-slate-400">Step 1 of 4</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!subject.trim()) {
+                    setErrorMessage('Please enter an email subject');
+                    return;
+                  }
+                  setErrorMessage(null);
+                  setCurrentStep(2);
+                }}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                <span>Next: Add Leads</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        )}
 
-        {/* Sender Dropdown */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-neutral-400">From Sender</label>
-          <select
-            value={senderId}
-            onChange={(e) => setSenderId(e.target.value)}
-            className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-orange-500"
-          >
-            {senders?.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.fromEmail}
-              </option>
-            ))}
-          </select>
+          {/* Live Preview Card */}
+          <div className="lg:col-span-4 bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Preview</span>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2 text-xs">
+                <div className="font-semibold text-slate-900 border-b border-slate-100 pb-2">
+                  Subject: <span className="font-normal text-slate-600">{subject || 'Your subject line...'}</span>
+                </div>
+                <div 
+                  className="prose prose-xs text-slate-600 max-h-60 overflow-y-auto pt-1"
+                  dangerouslySetInnerHTML={{
+                    __html: bodyHtml || '<p class="text-slate-400 italic">Hi there,<br/>This is a preview of how your email will look to the recipient.<br/><br/>Best,<br/>Alex</p>',
+                  }}
+                />
+              </div>
+            </div>
+            <div className="mt-4 text-[11px] text-slate-400">
+              Personalization tags and clean typography sanitized server-side.
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* Recipients Input */}
-        <RecipientInput recipients={recipients} onChange={setRecipients} />
+      {/* Step 2: Leads */}
+      {currentStep === 2 && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-6">
+          <div>
+            <h2 className="font-display font-bold text-lg text-slate-900">Add Your Leads</h2>
+            <p className="text-xs text-slate-500">Upload a CSV or text file with email addresses, or paste them directly.</p>
+          </div>
 
-        {/* Subject */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-neutral-400">Subject</label>
-          <input
-            type="text"
-            placeholder="Campaign subject line..."
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-xs text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-orange-500"
-          />
-        </div>
+          {/* Drag & Drop Box */}
+          <label className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/50 hover:bg-indigo-50/20 transition-all">
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3">
+              <Upload className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-semibold text-slate-800">Drag & drop your file here</p>
+            <p className="text-xs text-slate-400 mt-0.5">Supports CSV, TXT (max 2MB)</p>
+            <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
+            <span className="mt-3 inline-block px-3 py-1.5 text-xs font-medium text-indigo-600 bg-white border border-slate-200 rounded-lg shadow-2xs">
+              Browse Files
+            </span>
+          </label>
 
-        {/* Pacing & Rate Limit Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-neutral-400">
-              Delay Between Emails (seconds)
-            </label>
+          {/* Direct Input */}
+          <div className="flex gap-2">
             <input
-              type="number"
-              min="0"
-              max="3600"
-              value={delaySeconds}
-              onChange={(e) => setDelaySeconds(Number(e.target.value))}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2 text-xs text-neutral-100 focus:outline-none focus:border-orange-500 font-mono"
+              type="text"
+              placeholder="Paste email or comma-separated addresses..."
+              value={rawLeadInput}
+              onChange={(e) => setRawLeadInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddRawEmail())}
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             />
-            <p className="text-[11px] text-neutral-500">Paces sends to avoid spam triggers.</p>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-neutral-400">
-              Hourly Limit per Sender
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="1000"
-              value={hourlyLimit}
-              onChange={(e) => setHourlyLimit(Number(e.target.value))}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2 text-xs text-neutral-100 focus:outline-none focus:border-orange-500 font-mono"
-            />
-            <p className="text-[11px] text-neutral-500">Jobs exceeding cap defer to next hour.</p>
-          </div>
-        </div>
-
-        {/* Rich Text Editor */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-neutral-400">Email Body</label>
-          <RichEditor value={bodyHtml} onChange={setBodyHtml} />
-        </div>
-
-        {/* Attachments Section */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-neutral-400">
-              Attachments ({attachments.length}/3)
-            </label>
             <button
               type="button"
-              disabled={attachments.length >= 3 || isUploadingAttachment}
-              onClick={() => attachmentInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 text-xs text-neutral-300 hover:text-white disabled:opacity-40 cursor-pointer"
+              onClick={handleAddRawEmail}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl transition-colors cursor-pointer"
             >
-              <Paperclip className="w-3.5 h-3.5" />
-              <span>{isUploadingAttachment ? 'Uploading...' : 'Add Attachment'}</span>
+              Add
             </button>
-            <input
-              ref={attachmentInputRef}
-              type="file"
-              accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv"
-              onChange={handleAttachmentUpload}
-              className="hidden"
-            />
           </div>
 
-          {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {attachments.map((att) => (
-                <div
-                  key={att.id}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200"
+          {/* Detected Emails List */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-semibold text-slate-700">
+                Detected Email Addresses ({recipients.length} found)
+              </span>
+              {recipients.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setRecipients([])}
+                  className="text-xs text-rose-600 hover:underline cursor-pointer"
                 >
-                  <span className="truncate max-w-[150px]">{att.filename}</span>
-                  <span className="text-[10px] text-neutral-500 font-mono">
-                    ({(att.size / 1024).toFixed(0)} KB)
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(att.id)}
-                    className="hover:text-rose-400"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+                  Clear all
+                </button>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Action Bar */}
-        <div className="pt-4 flex items-center justify-end border-t border-neutral-800">
-          <SendLaterPopover
-            disabled={isSubmitting}
-            onSendNow={() => handleOpenConfirm(new Date())}
-            onSchedule={(date) => handleOpenConfirm(date)}
-          />
-        </div>
-      </div>
+            <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl p-3 bg-slate-50/40 divide-y divide-slate-100">
+              {recipients.length === 0 ? (
+                <div className="text-xs text-slate-400 py-4 text-center">No recipients added yet.</div>
+              ) : (
+                recipients.map((rec) => (
+                  <div key={rec} className="py-1.5 flex items-center justify-between text-xs text-slate-700">
+                    <span className="font-mono">{rec}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeRecipient(rec)}
+                      className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
-      {/* Confirmation Dialog */}
-      <ConfirmSendDialog
-        open={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        onConfirm={handleExecuteSend}
-        isSubmitting={isSubmitting}
-        summary={{
-          senderEmail: selectedSenderEmail,
-          recipientCount: recipients.length,
-          subject,
-          scheduledAt: scheduledDate,
-          delaySeconds,
-          hourlyLimit,
-          attachmentCount: attachments.length,
-        }}
-      />
+          <div className="pt-4 flex justify-between items-center border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(1)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (recipients.length === 0) {
+                  setErrorMessage('Please add at least one recipient lead');
+                  return;
+                }
+                setErrorMessage(null);
+                setCurrentStep(3);
+              }}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            >
+              <span>Next: Schedule Settings</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Schedule Settings */}
+      {currentStep === 3 && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-5">
+            <div>
+              <h2 className="font-display font-bold text-lg text-slate-900">Schedule Settings</h2>
+              <p className="text-xs text-slate-500">Configure when and how your emails will be paced.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Start Date & Time (UTC)</label>
+              <input
+                type="datetime-local"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Delay Between Emails (seconds)</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={2}
+                  max={300}
+                  value={delaySeconds}
+                  onChange={(e) => setDelaySeconds(Number(e.target.value))}
+                  className="w-32 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                <span className="text-xs text-slate-400">Minimum delay between each email send to prevent spam flags.</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Hourly Sending Limit</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={10}
+                  max={500}
+                  value={hourlyLimit}
+                  onChange={(e) => setHourlyLimit(Number(e.target.value))}
+                  className="w-32 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                <span className="text-xs text-slate-400">Maximum number of emails to send per hour. Excess deferred with jitter.</span>
+              </div>
+            </div>
+
+            <div className="pt-4 flex justify-between items-center border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setCurrentStep(2)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" /> Back
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentStep(4)}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                <span>Next: Review Campaign</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Schedule Estimates Box */}
+          <div className="lg:col-span-4 bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Clock className="w-4 h-4 text-indigo-600" />
+                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Estimated Schedule</span>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="p-3 bg-white rounded-xl border border-slate-200">
+                  <span className="text-slate-400 block text-[11px]">Total Leads</span>
+                  <span className="font-semibold text-slate-900 font-mono text-sm">{recipientCount} emails</span>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-slate-200">
+                  <span className="text-slate-400 block text-[11px]">Start Time</span>
+                  <span className="font-semibold text-slate-900 font-mono">{new Date(startDate).toLocaleString()}</span>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-slate-200">
+                  <span className="text-slate-400 block text-[11px]">Pacing & Limits</span>
+                  <span className="font-semibold text-slate-900 font-mono">{delaySeconds}s delay · {hourlyLimit}/hr cap</span>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-slate-200">
+                  <span className="text-slate-400 block text-[11px]">Estimated Duration</span>
+                  <span className="font-semibold text-indigo-600 font-mono">{formattedDuration}</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="mt-4 text-[11px] text-slate-400">
+              Pacing calculations dynamically factor in your hourly throttle and queue jitter.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: Review & Submit */}
+      {currentStep === 4 && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-6">
+          <div>
+            <h2 className="font-display font-bold text-lg text-slate-900">Campaign Review</h2>
+            <p className="text-xs text-slate-500">Double check your outreach parameters before enqueuing jobs.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-slate-400 block text-[11px]">Subject</span>
+              <p className="font-semibold text-slate-900">{subject}</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-slate-400 block text-[11px]">Total Recipients</span>
+              <p className="font-semibold text-slate-900 font-mono">{recipients.length} recipients</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-slate-400 block text-[11px]">Scheduled Start</span>
+              <p className="font-semibold text-slate-900 font-mono">{new Date(startDate).toLocaleString()}</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-slate-400 block text-[11px]">Pacing & Limits</span>
+              <p className="font-semibold text-slate-900 font-mono">{delaySeconds}s delay · max {hourlyLimit}/hr</p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-indigo-50/50 border border-indigo-100 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+              <Send className="w-4 h-4" />
+            </div>
+            <p className="text-xs text-indigo-900">
+              Upon confirmation, {recipients.length} individual BullMQ email jobs will be staged in PostgreSQL and queued in Redis.
+            </p>
+          </div>
+
+          <div className="pt-4 flex justify-between items-center border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(3)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={handleExecuteSend}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold shadow-sm shadow-indigo-500/25 transition-all cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+              <span>{isSubmitting ? 'Scheduling...' : 'Schedule Campaign'}</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
