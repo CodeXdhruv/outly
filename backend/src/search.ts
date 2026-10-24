@@ -1,6 +1,6 @@
 import { Client } from '@elastic/elasticsearch';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { logger } from './config.js';
 import { prisma } from './db.js';
 
 export let esClient: Client | null = null;

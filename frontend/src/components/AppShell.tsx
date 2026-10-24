@@ -13,7 +13,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import logoSvg from '../assets/reachinbox-blue-favicon.svg';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../App';
 import type { EmailCounts } from '../types';
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {

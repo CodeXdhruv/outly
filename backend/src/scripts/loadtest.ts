@@ -1,6 +1,6 @@
 import { prisma } from '../db.js';
 import { enqueueEmailsBulk } from '../queue.js';
-import { logger } from '../logger.js';
+import { logger } from '../config.js';
 import crypto from 'node:crypto';
 
 async function run() {

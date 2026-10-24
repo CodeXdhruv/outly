@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { config } from './config.js';
 import { prisma } from './db.js';
-import { logger } from './logger.js';
+import { logger } from './config.js';
 
 export const googleClient = new OAuth2Client(
   config.GOOGLE_CLIENT_ID,
@@ -205,4 +205,17 @@ export function setupAuthRoutes(app: any) {
       res.status(200).json({ success: true });
     });
   });
+}
+import 'express-session';
+
+declare module 'express-session' {
+  interface SessionData {
+    user?: {
+      id: string;
+      email: string;
+      name: string;
+      avatarUrl?: string | null;
+    };
+    oauthState?: string;
+  }
 }

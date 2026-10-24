@@ -3,7 +3,7 @@ import sanitizeHtml from 'sanitize-html';
 import { z } from 'zod';
 import { config } from './config.js';
 import { prisma } from './db.js';
-import { logger } from './logger.js';
+import { logger } from './config.js';
 
 export interface RecipientParseResult {
   valid: string[];

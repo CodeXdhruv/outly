@@ -1,6 +1,6 @@
 import { prisma } from '../db.js';
 import { bulkIndexEmails, initElasticsearchIndex } from '../search.js';
-import { logger } from '../logger.js';
+import { logger } from '../config.js';
 
 async function run() {
   logger.info('Starting Elasticsearch reindex script...');

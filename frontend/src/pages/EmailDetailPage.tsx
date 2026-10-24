@@ -9,7 +9,7 @@ import {
   AlertTriangle,
   RotateCw,
 } from 'lucide-react';
-import { StatusPill } from '../components/StatusPill';
+import { StatusPill } from '../components/EmailRow';
 import type { EmailDetail } from '../types';
 
 export const EmailDetailPage: React.FC = () => {

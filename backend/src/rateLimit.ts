@@ -1,6 +1,6 @@
-import { redis } from './redis.js';
+import { redis } from './db.js';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { logger } from './config.js';
 
 /**
  * Lua script for atomic reservation

@@ -2,8 +2,8 @@ import crypto from 'node:crypto';
 import type { Request, Response } from 'express';
 import { config } from './config.js';
 import { prisma } from './db.js';
-import { redis } from './redis.js';
-import { logger } from './logger.js';
+import { redis } from './db.js';
+import { logger } from './config.js';
 
 const ALGORITHM = 'aes-256-gcm';
 

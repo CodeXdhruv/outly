@@ -1,7 +1,7 @@
 import { Queue, DelayedError } from 'bullmq';
-import { redis } from './redis.js';
+import { redis } from './db.js';
 import { prisma } from './db.js';
-import { logger } from './logger.js';
+import { logger } from './config.js';
 import { bulkIndexEmails } from './search.js';
 
 export const emailQueue = new Queue('emails', {

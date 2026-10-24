@@ -5,7 +5,7 @@ import {
   Sliders, 
   MessageSquare
 } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../App';
 import type { SlackStatus } from '../types';
 
 export const IntegrationsPage: React.FC = () => {
