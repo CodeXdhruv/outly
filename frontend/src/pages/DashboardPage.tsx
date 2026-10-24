@@ -30,7 +30,6 @@ export const DashboardPage: React.FC = () => {
   const scheduledCount = counts?.scheduled ?? 0;
   const sentCount = counts?.sent ?? 0;
   const failedCount = 0;
-  const total = scheduledCount + sentCount + failedCount;
   const deliveryRate = (sentCount + failedCount) > 0 ? Math.round((sentCount / (sentCount + failedCount)) * 100) : 100;
 
   return (
