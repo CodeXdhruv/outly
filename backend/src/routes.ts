@@ -441,6 +441,14 @@ routes.get('/api/emails', requireAuth, async (req: Request, res: Response) => {
 // 8. Email counts for sidebar
 routes.get('/api/emails/counts', requireAuth, async (req: Request, res: Response) => {
   const userId = req.session.user!.id;
+  const cacheKey = `counts:${userId}`;
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+  } catch {}
 
   const [scheduled, sent] = await Promise.all([
     prisma.email.count({
@@ -457,7 +465,12 @@ routes.get('/api/emails/counts', requireAuth, async (req: Request, res: Response
     }),
   ]);
 
-  res.json({ scheduled, sent });
+  const counts = { scheduled, sent };
+  try {
+    await redis.set(cacheKey, JSON.stringify(counts), 'EX', 5);
+  } catch {}
+
+  res.json(counts);
 });
 
 // 9. Email Detail
