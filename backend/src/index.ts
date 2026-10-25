@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import session from 'express-session';
@@ -73,20 +74,9 @@ app.use(
 // Origin / CSRF check
 app.use(checkOrigin);
 
-// Health endpoints
-app.get('/health/live', (req, res) => {
-  res.status(200).json({ status: 'live' });
-});
-
-app.get('/health/ready', async (req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    await redis.ping();
-    res.status(200).json({ status: 'ready', postgres: 'up', redis: 'up' });
-  } catch (err: any) {
-    logger.error(err, 'Health check failed');
-    res.status(503).json({ status: 'unready', error: err.message });
-  }
+// Health endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Bull Board Admin
@@ -105,22 +95,30 @@ setupSlackRoutes(app);
 // Application API routes
 app.use(routes);
 
-// Serve built frontend if in production
+// Serve built frontend if in production and dist exists
 if (config.NODE_ENV === 'production') {
   const distPath = path.resolve(process.cwd(), '../frontend/dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res, next) => {
-    if (
-      req.path.startsWith('/api') ||
-      req.path.startsWith('/auth') ||
-      req.path.startsWith('/integrations') ||
-      req.path.startsWith('/admin') ||
-      req.path.startsWith('/health')
-    ) {
-      return next();
-    }
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
+  const indexHtmlPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexHtmlPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res, next) => {
+      if (
+        req.path.startsWith('/api') ||
+        req.path.startsWith('/auth') ||
+        req.path.startsWith('/integrations') ||
+        req.path.startsWith('/admin') ||
+        req.path.startsWith('/health')
+      ) {
+        return next();
+      }
+      res.sendFile(indexHtmlPath);
+    });
+  } else {
+    // Frontend hosted separately (e.g. Vercel)
+    app.get('/', (req, res) => {
+      res.status(200).json({ status: 'ok', service: 'Outly API' });
+    });
+  }
 }
 
 // Error handling middleware
