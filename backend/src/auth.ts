@@ -106,7 +106,7 @@ export function setupAuthRoutes(app: any) {
           avatarUrl: user.avatarUrl,
         };
         req.session.save(() => {
-          res.redirect(`${config.WEB_ORIGIN}/scheduled`);
+          res.redirect(`${config.WEB_ORIGIN}/dashboard`);
         });
       }).catch((err) => {
         logger.error(err, 'Mock auth failure');
@@ -213,7 +213,7 @@ export function setupAuthRoutes(app: any) {
         await redis.set(`auth_ticket:${authTicket}`, user.id, 'EX', 60);
 
         req.session.save(() => {
-          res.redirect(`${config.WEB_ORIGIN}/scheduled?auth_ticket=${authTicket}`);
+          res.redirect(`${config.WEB_ORIGIN}/dashboard?auth_ticket=${authTicket}`);
         });
       });
     } catch (err) {
