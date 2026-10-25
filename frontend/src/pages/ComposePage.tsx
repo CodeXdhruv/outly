@@ -52,19 +52,134 @@ export const ComposePage: React.FC = () => {
     }
   }, [senders, senderId]);
 
-  // Handle parsing CSV / txt
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [fileStats, setFileStats] = useState<{ name: string; added: number; duplicates: number; invalid: number } | null>(null);
+
+  // Helper to extract emails from raw string or CSV
+  const processFileContent = (text: string, filename: string) => {
+    const isCsv = filename.toLowerCase().endsWith('.csv');
+    const lines = text.split(/\r?\n/);
+    const newEmails: string[] = [];
+    let invalidCount = 0;
+    let duplicateCount = 0;
+
+    // Email regex matching standard format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // Detect CSV header if column 'email' exists
+    let emailColIdx = -1;
+    let startLine = 0;
+    if (isCsv && lines.length > 0) {
+      const headerCols = lines[0].split(',').map((c) => c.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+      emailColIdx = headerCols.findIndex((col) => col.includes('email'));
+      if (emailColIdx !== -1) {
+        startLine = 1;
+      } else {
+        emailColIdx = 0;
+      }
+    }
+
+    const currentSet = new Set(recipients);
+
+    for (let i = startLine; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line || line.startsWith('#')) continue;
+
+      let candidate = line;
+      if (isCsv) {
+        // Handle CSV comma splitting respecting quotes if any
+        const parts = line.split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
+        candidate = parts[emailColIdx >= 0 ? emailColIdx : 0] || '';
+      }
+
+      // Check if candidate matches or contains an email
+      const matched = candidate.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/g);
+      if (matched) {
+        for (const em of matched) {
+          const lower = em.toLowerCase().trim();
+          if (emailRegex.test(lower)) {
+            if (currentSet.has(lower)) {
+              duplicateCount++;
+            } else {
+              currentSet.add(lower);
+              newEmails.push(lower);
+            }
+          } else {
+            invalidCount++;
+          }
+        }
+      } else if (candidate.length > 0) {
+        invalidCount++;
+      }
+    }
+
+    if (newEmails.length > 0) {
+      setRecipients(Array.from(currentSet));
+    }
+    setFileStats({
+      name: filename,
+      added: newEmails.length,
+      duplicates: duplicateCount,
+      invalid: invalidCount,
+    });
+    setIsProcessingFile(false);
+  };
+
+  // Process uploaded or dropped File object
+  const handleFileProcess = (file: File) => {
     if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorMessage('File exceeds 2MB limit.');
+      return;
+    }
+    setIsProcessingFile(true);
+    setErrorMessage(null);
 
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      const emails = (text.match(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g) || []).map((em) => em.toLowerCase().trim());
-      const merged = Array.from(new Set([...recipients, ...emails]));
-      setRecipients(merged);
+      try {
+        const text = evt.target?.result as string;
+        processFileContent(text, file.name);
+      } catch (err: any) {
+        setErrorMessage(err.message || 'Error processing file.');
+        setIsProcessingFile(false);
+      }
+    };
+    reader.onerror = () => {
+      setErrorMessage('Failed to read file.');
+      setIsProcessingFile(false);
     };
     reader.readAsText(file);
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileProcess(file);
+    }
+    // reset value so re-selecting same file triggers change
+    e.target.value = '';
+  };
+
+  const [isDragOver, setIsDragOver] = useState(false);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileProcess(file);
+    }
   };
 
   const handleAddRawEmail = () => {
@@ -267,17 +382,57 @@ export const ComposePage: React.FC = () => {
           </div>
 
           {/* Drag & Drop Box */}
-          <label className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/50 hover:bg-indigo-50/20 transition-all">
-            <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3">
-              <Upload className="w-6 h-6" />
+          <label 
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+              isDragOver 
+                ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01]' 
+                : 'border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/20'
+            }`}
+          >
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 transition-colors ${
+              isDragOver ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'
+            }`}>
+              <Upload className={`w-6 h-6 ${isProcessingFile ? 'animate-bounce' : ''}`} />
             </div>
-            <p className="text-sm font-semibold text-slate-800">Drag & drop your file here</p>
+            <p className="text-sm font-semibold text-slate-800">
+              {isProcessingFile ? 'Processing file on the fly...' : 'Drag & drop your file here'}
+            </p>
             <p className="text-xs text-slate-400 mt-0.5">Supports CSV, TXT (max 2MB)</p>
-            <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
-            <span className="mt-3 inline-block px-3 py-1.5 text-xs font-medium text-indigo-600 bg-white border border-slate-200 rounded-lg shadow-2xs">
+            <input 
+              type="file" 
+              accept=".csv,.txt" 
+              onChange={handleFileInputChange} 
+              className="hidden" 
+              disabled={isProcessingFile}
+            />
+            <span className="mt-3 inline-block px-3 py-1.5 text-xs font-medium text-indigo-600 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-slate-50">
               Browse Files
             </span>
           </label>
+
+          {/* Instant feedback badge */}
+          {fileStats && (
+            <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  <strong>{fileStats.name}</strong> processed: <strong>+{fileStats.added} new</strong>
+                  {fileStats.duplicates > 0 && `, ${fileStats.duplicates} duplicate${fileStats.duplicates > 1 ? 's' : ''} skipped`}
+                  {fileStats.invalid > 0 && `, ${fileStats.invalid} invalid ignored`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFileStats(null)}
+                className="text-emerald-600 hover:text-emerald-800 font-bold ml-2 p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Direct Input */}
           <div className="flex gap-2">

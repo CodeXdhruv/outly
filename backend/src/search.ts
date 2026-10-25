@@ -3,14 +3,28 @@ import { config } from './config.js';
 import { logger } from './config.js';
 import { prisma } from './db.js';
 
-export let esClient: Client | null = null;
+interface EsSearchConfig {
+  baseUrl: string;
+  authHeader?: string;
+}
+
+let esConfig: EsSearchConfig | null = null;
 
 if (config.ELASTICSEARCH_URL) {
   try {
-    esClient = new Client({ node: config.ELASTICSEARCH_URL });
-    logger.info({ node: config.ELASTICSEARCH_URL }, 'Elasticsearch client configured');
+    const parsed = new URL(config.ELASTICSEARCH_URL.trim());
+    const authHeader =
+      parsed.username || parsed.password
+        ? 'Basic ' + Buffer.from(`${decodeURIComponent(parsed.username)}:${decodeURIComponent(parsed.password)}`).toString('base64')
+        : undefined;
+
+    esConfig = {
+      baseUrl: `${parsed.protocol}//${parsed.host}`,
+      authHeader,
+    };
+    logger.info({ node: esConfig.baseUrl }, 'Search client configured');
   } catch (err) {
-    logger.error(err, 'Failed to initialize Elasticsearch client');
+    logger.error(err, 'Failed to initialize search client config');
   }
 } else {
   logger.info('ELASTICSEARCH_URL not configured. Search queries will fall back to PostgreSQL.');
@@ -18,14 +32,39 @@ if (config.ELASTICSEARCH_URL) {
 
 const EMAILS_INDEX = 'emails';
 
+async function esRequest(path: string, options: { method?: string; body?: any; isNdjson?: boolean } = {}) {
+  if (!esConfig) throw new Error('Search client not configured');
+
+  const headers: Record<string, string> = {
+    'Content-Type': options.isNdjson ? 'application/x-ndjson' : 'application/json',
+    Accept: 'application/json',
+  };
+
+  if (esConfig.authHeader) {
+    headers['Authorization'] = esConfig.authHeader;
+  }
+
+  const res = await fetch(`${esConfig.baseUrl}${path}`, {
+    method: options.method || 'GET',
+    headers,
+    body: options.body
+      ? typeof options.body === 'string'
+        ? options.body
+        : JSON.stringify(options.body)
+      : undefined,
+  });
+
+  return res;
+}
+
 export async function initElasticsearchIndex() {
-  if (!esClient) return;
+  if (!esConfig) return;
 
   try {
-    const exists = await esClient.indices.exists({ index: EMAILS_INDEX });
-    if (!exists) {
-      await esClient.indices.create({
-        index: EMAILS_INDEX,
+    const headRes = await esRequest(`/${EMAILS_INDEX}`, { method: 'HEAD' });
+    if (headRes.status === 404) {
+      const createRes = await esRequest(`/${EMAILS_INDEX}`, {
+        method: 'PUT',
         body: {
           mappings: {
             properties: {
@@ -50,10 +89,18 @@ export async function initElasticsearchIndex() {
           },
         },
       });
-      logger.info('Created Elasticsearch "emails" index with mappings');
+
+      if (createRes.ok) {
+        logger.info('Created search "emails" index with mappings');
+      } else {
+        const errorText = await createRes.text();
+        logger.error({ errorText }, 'Error initializing search index');
+      }
+    } else if (headRes.ok) {
+      logger.info('Search "emails" index verified');
     }
   } catch (err) {
-    logger.error(err, 'Error initializing Elasticsearch index');
+    logger.error(err, 'Error initializing search index');
   }
 }
 
@@ -70,12 +117,11 @@ export async function indexEmail(email: {
   sentAt?: Date | null;
   createdAt: Date;
 }) {
-  if (!esClient) return;
+  if (!esConfig) return;
 
   try {
-    await esClient.index({
-      index: EMAILS_INDEX,
-      id: email.id,
+    const res = await esRequest(`/${EMAILS_INDEX}/_doc/${encodeURIComponent(email.id)}`, {
+      method: 'PUT',
       body: {
         emailId: email.id,
         userId: email.userId,
@@ -91,12 +137,17 @@ export async function indexEmail(email: {
       },
     });
 
-    await prisma.email.update({
-      where: { id: email.id },
-      data: { searchSyncedAt: new Date() },
-    });
+    if (res.ok) {
+      await prisma.email.update({
+        where: { id: email.id },
+        data: { searchSyncedAt: new Date() },
+      });
+    } else {
+      const errText = await res.text();
+      logger.warn({ errText, emailId: email.id }, 'Failed to index email in search backend');
+    }
   } catch (err) {
-    logger.warn({ err, emailId: email.id }, 'Failed to index email in Elasticsearch');
+    logger.warn({ err, emailId: email.id }, 'Failed to index email in search backend');
   }
 }
 
@@ -115,38 +166,53 @@ export async function bulkIndexEmails(
     createdAt: Date;
   }>
 ) {
-  if (!esClient || emails.length === 0) return;
+  if (!esConfig || emails.length === 0) return;
 
   try {
-    const operations = emails.flatMap((doc) => [
-      { index: { _index: EMAILS_INDEX, _id: doc.id } },
-      {
-        emailId: doc.id,
-        userId: doc.userId,
-        campaignId: doc.campaignId,
-        senderId: doc.senderId,
-        recipientEmail: doc.recipientEmail,
-        subject: doc.subject,
-        preview: doc.preview,
-        status: doc.status,
-        scheduledAt: doc.scheduledAt.toISOString(),
-        sentAt: doc.sentAt ? doc.sentAt.toISOString() : null,
-        createdAt: doc.createdAt.toISOString(),
-      },
-    ]);
-
-    const bulkResponse = await esClient.bulk({ refresh: true, operations });
-    if (bulkResponse.errors) {
-      logger.warn('Some errors occurred during ES bulk indexing');
+    const lines: string[] = [];
+    for (const doc of emails) {
+      lines.push(JSON.stringify({ index: { _index: EMAILS_INDEX, _id: doc.id } }));
+      lines.push(
+        JSON.stringify({
+          emailId: doc.id,
+          userId: doc.userId,
+          campaignId: doc.campaignId,
+          senderId: doc.senderId,
+          recipientEmail: doc.recipientEmail,
+          subject: doc.subject,
+          preview: doc.preview,
+          status: doc.status,
+          scheduledAt: doc.scheduledAt.toISOString(),
+          sentAt: doc.sentAt ? doc.sentAt.toISOString() : null,
+          createdAt: doc.createdAt.toISOString(),
+        })
+      );
     }
+    const ndjsonBody = lines.join('\n') + '\n';
 
-    const ids = emails.map((e) => e.id);
-    await prisma.email.updateMany({
-      where: { id: { in: ids } },
-      data: { searchSyncedAt: new Date() },
+    const res = await esRequest('/_bulk?refresh=true', {
+      method: 'POST',
+      body: ndjsonBody,
+      isNdjson: true,
     });
+
+    if (res.ok) {
+      const json: any = await res.json();
+      if (json.errors) {
+        logger.warn('Some errors occurred during search bulk indexing');
+      }
+
+      const ids = emails.map((e) => e.id);
+      await prisma.email.updateMany({
+        where: { id: { in: ids } },
+        data: { searchSyncedAt: new Date() },
+      });
+    } else {
+      const errText = await res.text();
+      logger.warn({ errText }, 'Search bulk index HTTP failure');
+    }
   } catch (err) {
-    logger.warn(err, 'Elasticsearch bulk index failure');
+    logger.warn(err, 'Search bulk index failure');
   }
 }
 
@@ -158,7 +224,7 @@ export async function searchEmails(params: {
   page?: number;
   limit?: number;
 }): Promise<{ emailIds: string[]; total: number } | null> {
-  if (!esClient) return null;
+  if (!esConfig) return null;
 
   const { userId, query, status, senderId, page = 1, limit = 20 } = params;
   const from = (page - 1) * limit;
@@ -194,18 +260,28 @@ export async function searchEmails(params: {
       sort: [{ scheduledAt: { order: 'desc' } }],
     };
 
-    const response: any = await esClient.search({
-      index: EMAILS_INDEX,
-      ...searchBody,
+    const res = await esRequest(`/${EMAILS_INDEX}/_search`, {
+      method: 'POST',
+      body: searchBody,
     });
 
-    const hits = response.hits.hits;
-    const total = typeof response.hits.total === 'number' ? response.hits.total : response.hits.total?.value || 0;
+    if (!res.ok) {
+      const errText = await res.text();
+      logger.warn({ errText }, 'Search backend error; falling back to PostgreSQL');
+      return null;
+    }
+
+    const response: any = await res.json();
+    const hits = response.hits?.hits || [];
+    const total =
+      typeof response.hits?.total === 'number'
+        ? response.hits.total
+        : response.hits?.total?.value || 0;
     const emailIds = hits.map((h: any) => h._id as string);
 
     return { emailIds, total };
   } catch (err) {
-    logger.warn(err, 'Elasticsearch search error; falling back to PostgreSQL');
+    logger.warn(err, 'Search error; falling back to PostgreSQL');
     return null;
   }
 }

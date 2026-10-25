@@ -48,7 +48,8 @@ export const StatusPill: React.FC<{
 export const EmailRow: React.FC<{
   email: EmailListItem;
   onToggleStar: (id: string, current: boolean) => void;
-}> = ({ email, onToggleStar }) => {
+  highlight?: string;
+}> = ({ email, onToggleStar, highlight = '' }) => {
   const navigate = useNavigate();
 
   const formattedDate = React.useMemo(() => {
@@ -61,6 +62,21 @@ export const EmailRow: React.FC<{
       minute: '2-digit',
     });
   }, [email.scheduledAt, email.sentAt]);
+
+  const renderHighlight = (text: string) => {
+    if (!highlight.trim()) return text;
+    const escaped = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+    return parts.map((part, i) =>
+      part.toLowerCase() === highlight.toLowerCase() ? (
+        <mark key={i} className="bg-amber-200/90 text-amber-950 font-semibold px-0.5 rounded">
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
 
   return (
     <div
@@ -85,16 +101,20 @@ export const EmailRow: React.FC<{
 
       {/* Recipient */}
       <div className="w-48 shrink-0 truncate">
-        <span className="text-xs font-semibold text-slate-900">{email.recipientEmail}</span>
+        <span className="text-xs font-semibold text-slate-900">
+          {renderHighlight(email.recipientEmail)}
+        </span>
       </div>
 
       {/* Subject + Preview */}
       <div className="flex-1 min-w-0 flex items-center gap-2">
         <span className="text-xs font-medium text-slate-800 truncate shrink-0 max-w-xs">
-          {email.subject}
+          {renderHighlight(email.subject)}
         </span>
         <span className="text-slate-300 text-xs">-</span>
-        <span className="text-xs text-slate-400 truncate">{email.preview}</span>
+        <span className="text-xs text-slate-400 truncate">
+          {renderHighlight(email.preview)}
+        </span>
       </div>
 
       {/* Status Pill */}

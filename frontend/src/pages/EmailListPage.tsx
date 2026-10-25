@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
   RotateCw,
@@ -9,7 +9,8 @@ import {
   Star,
   Inbox,
   AlertCircle,
-  Plus
+  Plus,
+  X
 } from 'lucide-react';
 import { EmailRow } from '../components/EmailRow';
 import type { EmailListItem } from '../types';
@@ -17,10 +18,22 @@ import type { EmailListItem } from '../types';
 export const EmailListPage: React.FC<{ mode: 'scheduled' | 'sent' }> = ({ mode }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
+
   const [page, setPage] = React.useState(1);
-  const [search, setSearch] = React.useState('');
+  const [search, setSearch] = React.useState(initialSearch);
   const [starredOnly, setStarredOnly] = React.useState(false);
   const [filterSender, setFilterSender] = React.useState('');
+
+  // Sync search state if URL search query changes (e.g. from top bar search)
+  React.useEffect(() => {
+    const queryInUrl = searchParams.get('search') || '';
+    if (queryInUrl !== search) {
+      setSearch(queryInUrl);
+      setPage(1);
+    }
+  }, [searchParams]);
 
   const limit = 20;
 
@@ -114,11 +127,33 @@ export const EmailListPage: React.FC<{ mode: 'scheduled' | 'sent' }> = ({ mode }
                 placeholder="Search by subject, recipient or campaign..."
                 value={search}
                 onChange={(e) => {
-                  setSearch(e.target.value);
+                  const val = e.target.value;
+                  setSearch(val);
                   setPage(1);
+                  setSearchParams((prev) => {
+                    if (val) prev.set('search', val);
+                    else prev.delete('search');
+                    return prev;
+                  });
                 }}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('');
+                    setPage(1);
+                    setSearchParams((prev) => {
+                      prev.delete('search');
+                      return prev;
+                    });
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {/* Starred filter button */}
@@ -192,6 +227,33 @@ export const EmailListPage: React.FC<{ mode: 'scheduled' | 'sent' }> = ({ mode }
           </div>
         </div>
 
+        {/* Active search banner */}
+        {search && (
+          <div className="px-6 py-2 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
+            <div className="flex items-center gap-2">
+              <Search className="w-3.5 h-3.5 text-indigo-600" />
+              <span>
+                Filtering by query: <strong className="font-mono bg-indigo-100 px-1.5 py-0.5 rounded text-indigo-950">"{search}"</strong>
+                {data && <span className="ml-1 text-indigo-700">({data.total} result{data.total !== 1 ? 's' : ''})</span>}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setPage(1);
+                setSearchParams((prev) => {
+                  prev.delete('search');
+                  return prev;
+                });
+              }}
+              className="text-indigo-600 hover:text-indigo-800 font-medium underline flex items-center gap-1 cursor-pointer"
+            >
+              Clear filter
+            </button>
+          </div>
+        )}
+
         {/* Table Content */}
         <div>
           {isLoading ? (
@@ -224,7 +286,9 @@ export const EmailListPage: React.FC<{ mode: 'scheduled' | 'sent' }> = ({ mode }
             <div className="h-64 flex flex-col items-center justify-center gap-2 text-slate-400">
               <Inbox className="w-10 h-10 stroke-[1.2]" />
               <p className="text-sm font-semibold text-slate-700">No {mode} emails found</p>
-              <p className="text-xs text-slate-400">Your {mode} campaigns will appear here once scheduled.</p>
+              <p className="text-xs text-slate-400">
+                {search ? `No results matching "${search}". Try checking spelling or clear search.` : `Your ${mode} campaigns will appear here once scheduled.`}
+              </p>
             </div>
           ) : (
             <div>
@@ -244,6 +308,7 @@ export const EmailListPage: React.FC<{ mode: 'scheduled' | 'sent' }> = ({ mode }
                   <EmailRow
                     key={email.id}
                     email={email}
+                    highlight={search}
                     onToggleStar={(id, cur) => starMutation.mutate({ id, starred: !cur })}
                   />
                 ))}

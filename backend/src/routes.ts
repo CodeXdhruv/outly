@@ -561,3 +561,70 @@ routes.patch('/api/emails/:id', requireAuth, async (req: Request, res: Response)
 
   res.json({ id: updated.id, starred: updated.starred });
 });
+
+// 11. Activity Notifications
+routes.get('/api/notifications', requireAuth, async (req: Request, res: Response) => {
+  const userId = req.session.user!.id;
+
+  const [campaigns, failedEmails, rateLimitEvents] = await Promise.all([
+    prisma.campaign.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+      select: {
+        id: true,
+        subject: true,
+        status: true,
+        totalCount: true,
+        createdAt: true,
+      },
+    }),
+    prisma.email.findMany({
+      where: { userId, status: 'failed' },
+      orderBy: { updatedAt: 'desc' },
+      take: 4,
+      select: {
+        id: true,
+        recipientEmail: true,
+        subject: true,
+        lastErrorMessage: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.rateLimitEvent.findMany({
+      where: { sender: { userId } },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      include: { sender: { select: { fromEmail: true } } },
+    }),
+  ]);
+
+  const items = [
+    ...campaigns.map((c) => ({
+      id: `camp-${c.id}`,
+      type: c.status === 'completed' ? 'campaign_completed' : 'campaign_created',
+      title: c.status === 'completed' ? 'Campaign completed' : 'Campaign scheduled',
+      description: `"${c.subject}" with ${c.totalCount} recipients`,
+      timestamp: c.createdAt.toISOString(),
+      level: 'info' as const,
+    })),
+    ...failedEmails.map((f) => ({
+      id: `fail-${f.id}`,
+      type: 'email_failed',
+      title: 'Email delivery failed',
+      description: `${f.recipientEmail}: ${f.lastErrorMessage || 'Unknown delivery error'}`,
+      timestamp: f.updatedAt.toISOString(),
+      level: 'error' as const,
+    })),
+    ...rateLimitEvents.map((r) => ({
+      id: `rate-${r.id}`,
+      type: 'rate_limit',
+      title: 'Hourly rate limit reached',
+      description: `${r.sender.fromEmail} reached its hourly sender limit`,
+      timestamp: r.createdAt.toISOString(),
+      level: 'warning' as const,
+    })),
+  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  res.json({ items: items.slice(0, 8) });
+});

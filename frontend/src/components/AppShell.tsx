@@ -21,6 +21,30 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const navigate = useNavigate();
   const location = useLocation();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [hasUnread, setHasUnread] = useState(true);
+
+  // Notifications query
+  const { data: notifData } = useQuery<{
+    items: Array<{
+      id: string;
+      type: string;
+      title: string;
+      description: string;
+      timestamp: string;
+      level: 'info' | 'warning' | 'error';
+    }>;
+  }>({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const res = await fetch('/api/notifications');
+      if (!res.ok) return { items: [] };
+      return res.json();
+    },
+    refetchInterval: 15000,
+  });
+
+  const notifications = notifData?.items || [];
 
   // Email counts query with 10s polling
   const { data: counts } = useQuery<EmailCounts>({
@@ -167,11 +191,68 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             />
           </div>
 
-          <div className="flex items-center gap-3">
-            <button className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors relative">
+          <div className="flex items-center gap-3 relative">
+            <button
+              onClick={() => {
+                setNotifOpen(!notifOpen);
+                setHasUnread(false);
+              }}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors relative"
+              title="Notifications"
+            >
               <Bell className="w-4 h-4" />
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 absolute top-2 right-2" />
+              {hasUnread && notifications.length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-indigo-600 absolute top-1.5 right-1.5 ring-2 ring-white" />
+              )}
             </button>
+
+            {notifOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setNotifOpen(false)}
+                />
+                <div className="absolute right-0 top-11 w-80 sm:w-96 bg-white border border-slate-200/90 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <span className="text-xs font-semibold text-slate-800">Activity Notifications</span>
+                    <span className="text-[10px] font-medium text-slate-400">
+                      {notifications.length} recent
+                    </span>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                    {notifications.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-slate-400">
+                        No recent activity
+                      </div>
+                    ) : (
+                      notifications.map((item) => (
+                        <div key={item.id} className="p-3.5 hover:bg-slate-50/80 transition-colors">
+                          <div className="flex items-start gap-2.5">
+                            <span
+                              className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                                item.level === 'error'
+                                  ? 'bg-rose-500 ring-2 ring-rose-100'
+                                  : item.level === 'warning'
+                                  ? 'bg-amber-500 ring-2 ring-amber-100'
+                                  : 'bg-indigo-500 ring-2 ring-indigo-100'
+                              }`}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-800">{item.title}</p>
+                              <p className="text-[11px] text-slate-500 mt-0.5 truncate">{item.description}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(item.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </header>
 
