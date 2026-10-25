@@ -472,7 +472,7 @@ routes.get('/api/emails/counts', requireAuth, async (req: Request, res: Response
     }
   } catch {}
 
-  const [scheduled, sent] = await Promise.all([
+  const [scheduled, sent, failed] = await Promise.all([
     prisma.email.count({
       where: {
         userId,
@@ -482,17 +482,80 @@ routes.get('/api/emails/counts', requireAuth, async (req: Request, res: Response
     prisma.email.count({
       where: {
         userId,
-        status: { in: ['sent', 'failed'] },
+        status: 'sent',
+      },
+    }),
+    prisma.email.count({
+      where: {
+        userId,
+        status: 'failed',
       },
     }),
   ]);
 
-  const counts = { scheduled, sent };
+  const counts = { scheduled, sent, failed };
   try {
     await redis.set(cacheKey, JSON.stringify(counts), 'EX', 5);
   } catch {}
 
   res.json(counts);
+});
+
+// 8b. Email Activity Chart Data (Real daily email stats)
+routes.get('/api/emails/activity', requireAuth, async (req: Request, res: Response) => {
+  const userId = req.session.user!.id;
+  const daysParam = req.query.days ? parseInt(req.query.days as string, 10) : 7;
+  const days = [7, 30, 90].includes(daysParam) ? daysParam : 7;
+
+  const now = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - (days - 1));
+  startDate.setHours(0, 0, 0, 0);
+
+  // Fetch emails updated or scheduled in the window
+  const emails = await prisma.email.findMany({
+    where: {
+      userId,
+      OR: [
+        { scheduledAt: { gte: startDate } },
+        { sentAt: { gte: startDate } },
+        { createdAt: { gte: startDate } },
+      ],
+    },
+    select: {
+      status: true,
+      scheduledAt: true,
+      sentAt: true,
+      createdAt: true,
+    },
+  });
+
+  // Build daily buckets
+  const buckets: { [dateStr: string]: { date: string; label: string; scheduled: number; sent: number; failed: number } } = {};
+  for (let i = 0; i < days; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const key = d.toISOString().split('T')[0];
+    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    buckets[key] = { date: key, label, scheduled: 0, sent: 0, failed: 0 };
+  }
+
+  for (const email of emails) {
+    if (email.status === 'sent' && email.sentAt) {
+      const key = email.sentAt.toISOString().split('T')[0];
+      if (buckets[key]) buckets[key].sent++;
+    } else if (email.status === 'failed') {
+      const targetDate = email.sentAt || email.scheduledAt || email.createdAt;
+      const key = targetDate.toISOString().split('T')[0];
+      if (buckets[key]) buckets[key].failed++;
+    } else if (email.status === 'scheduled' || email.status === 'processing') {
+      const key = email.scheduledAt.toISOString().split('T')[0];
+      if (buckets[key]) buckets[key].scheduled++;
+    }
+  }
+
+  const series = Object.values(buckets);
+  res.json({ days, series });
 });
 
 // 9. Email Detail

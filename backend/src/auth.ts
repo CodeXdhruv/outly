@@ -222,17 +222,28 @@ export function setupAuthRoutes(app: any) {
     }
   });
 
-  app.post('/auth/logout', (req: Request, res: Response) => {
+  const handleLogout = (req: Request, res: Response) => {
     req.session.destroy((err) => {
       if (err) {
         logger.error(err, 'Logout session destroy error');
-        res.status(500).json({ error: { code: 'LOGOUT_ERROR', message: 'Failed to logout' } });
+        if (req.method === 'GET') {
+          res.redirect(`${config.WEB_ORIGIN}/login?error=logout`);
+        } else {
+          res.status(500).json({ error: { code: 'LOGOUT_ERROR', message: 'Failed to logout' } });
+        }
         return;
       }
       res.clearCookie('connect.sid');
-      res.status(200).json({ success: true });
+      if (req.method === 'GET') {
+        res.redirect(`${config.WEB_ORIGIN}/login`);
+      } else {
+        res.status(200).json({ success: true });
+      }
     });
-  });
+  };
+
+  app.post('/auth/logout', handleLogout);
+  app.get('/auth/logout', handleLogout);
 }
 import 'express-session';
 

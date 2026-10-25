@@ -39,6 +39,7 @@ export interface EmailDetail extends EmailListItem {
 export interface EmailCounts {
   scheduled: number;
   sent: number;
+  failed?: number;
 }
 
 export interface SlackStatus {

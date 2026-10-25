@@ -17,7 +17,7 @@ import { useAuth } from '../App';
 import type { EmailCounts } from '../types';
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, refetch } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -58,9 +58,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   });
 
   const handleLogout = async () => {
-    await fetch('/auth/logout', { method: 'POST' });
-    await refetch();
-    navigate('/login');
+    try {
+      localStorage.removeItem('auth_ticket');
+      await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch (e) {
+      // ignore
+    }
+    window.location.href = '/login';
   };
 
   const navItems = [

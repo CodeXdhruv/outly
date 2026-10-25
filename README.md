@@ -1,4 +1,4 @@
-# Outbox Email Scheduler ("ONG")
+# Outly Email Scheduler ("ONG")
 
 High-reliability email scheduler and Gmail-style campaign management dashboard.
 Built with Node 20, TypeScript, Express, Prisma, BullMQ, Redis, PostgreSQL, and React (Vite + Tailwind).
@@ -9,6 +9,10 @@ Built with Node 20, TypeScript, Express, Prisma, BullMQ, Redis, PostgreSQL, and 
 
 - **Google OAuth 2.0:** Secure login and session handling via Redis.
 - **Gmail-Style Outbox Dashboard:** Scheduled & Sent lists with live search, filtering, star toggles, status pills, and detail view.
+- **Live Activity & Notification Center:**
+  - Header notification bell with real-time activity feed.
+  - Monitors campaign creation, completions, failed email deliveries with error reasons, and hourly rate-limit events.
+  - Auto-polling background updates with visual unread indicators.
 - **Rich Campaign Compose:**
   - TipTap WYSIWYG editor with strict server-side sanitization (`sanitize-html`).
   - Recipient chip inputs + CSV / TXT list uploads with duplicate and invalid email handling.
@@ -25,8 +29,9 @@ Built with Node 20, TypeScript, Express, Prisma, BullMQ, Redis, PostgreSQL, and 
 - **Slack Alerting:**
   - Signed-state Slack OAuth integration with AES-256-GCM encrypted webhooks.
   - Automatic rate-limit alert notifications in Slack when hourly cap is hit (deduplicated per sender per hour).
-- **Elasticsearch & Fallback Search:**
+- **Elasticsearch & OpenSearch Cloud Search:**
   - Full-text multi-match indexing on recipients, subject, and preview with automated PostgreSQL `ILIKE` fallback if Elasticsearch is offline.
+  - Compatible with local Elasticsearch clusters and cloud providers like Bonsai.io / OpenSearch.
 - **Bull Board Queue Admin:**
   - Protected admin dashboard at `/admin/queues` for monitoring queue states.
 
@@ -91,6 +96,13 @@ npm run dev
 ```
 
 *(Or run production combined service: `npm run start:all` inside `backend/` with `RUN_WORKER=true`)*
+
+### 4. Optional: Elasticsearch Reindexing
+If you have configured `ELASTICSEARCH_URL` (local or hosted like Bonsai):
+```bash
+npm --prefix backend run reindex
+```
+This syncs all existing database emails into the Elasticsearch index.
 
 ---
 

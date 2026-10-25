@@ -8,7 +8,6 @@ import {
   AlertTriangle, 
   ArrowUpRight, 
   Plus,
-  TrendingUp,
   MailCheck,
   Calendar
 } from 'lucide-react';
@@ -16,6 +15,8 @@ import type { EmailCounts } from '../types';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
+
+  const [timeRange, setTimeRange] = React.useState<number>(7);
 
   const { data: counts } = useQuery<EmailCounts>({
     queryKey: ['emails', 'counts'],
@@ -27,10 +28,77 @@ export const DashboardPage: React.FC = () => {
     refetchInterval: 10000,
   });
 
+  interface ActivityData {
+    days: number;
+    series: Array<{
+      date: string;
+      label: string;
+      scheduled: number;
+      sent: number;
+      failed: number;
+    }>;
+  }
+
+  const { data: activity } = useQuery<ActivityData>({
+    queryKey: ['emails', 'activity', timeRange],
+    queryFn: async () => {
+      const res = await fetch(`/api/emails/activity?days=${timeRange}`);
+      if (!res.ok) throw new Error('Failed to fetch activity');
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
   const scheduledCount = counts?.scheduled ?? 0;
   const sentCount = counts?.sent ?? 0;
-  const failedCount = 0;
+  const failedCount = counts?.failed ?? 0;
   const deliveryRate = (sentCount + failedCount) > 0 ? Math.round((sentCount / (sentCount + failedCount)) * 100) : 100;
+
+  const series = activity?.series ?? [];
+  const maxVal = Math.max(
+    5,
+    ...series.map((s) => Math.max(s.scheduled, s.sent, s.failed))
+  );
+
+  // SVG Chart Dimensions
+  const chartWidth = 800;
+  const chartHeight = 200;
+  const paddingX = 40;
+  const paddingY = 20;
+  const plotWidth = chartWidth - paddingX * 2;
+  const plotHeight = chartHeight - paddingY * 2;
+
+  const getPoints = (key: 'scheduled' | 'sent' | 'failed') => {
+    if (series.length === 0) return [];
+    if (series.length === 1) {
+      const y = paddingY + plotHeight - (series[0][key] / maxVal) * plotHeight;
+      return [{ x: paddingX + plotWidth / 2, y, val: series[0][key], label: series[0].label }];
+    }
+    return series.map((item, idx) => {
+      const x = paddingX + (idx / (series.length - 1)) * plotWidth;
+      const y = paddingY + plotHeight - (item[key] / maxVal) * plotHeight;
+      return { x, y, val: item[key], label: item.label };
+    });
+  };
+
+  const scheduledPoints = getPoints('scheduled');
+  const sentPoints = getPoints('sent');
+  const failedPoints = getPoints('failed');
+
+  const makePath = (points: Array<{ x: number; y: number }>) => {
+    if (points.length === 0) return '';
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+    return points.reduce((acc, curr, idx) => {
+      if (idx === 0) return `M ${curr.x} ${curr.y}`;
+      const prev = points[idx - 1];
+      const cx = (prev.x + curr.x) / 2;
+      return `${acc} C ${cx} ${prev.y}, ${cx} ${curr.y}, ${curr.x} ${curr.y}`;
+    }, '');
+  };
+
+  const scheduledPath = makePath(scheduledPoints);
+  const sentPath = makePath(sentPoints);
+  const failedPath = makePath(failedPoints);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -45,10 +113,14 @@ export const DashboardPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <select className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-xl shadow-xs focus:outline-none cursor-pointer">
-            <option>Last 7 days</option>
-            <option>Last 30 days</option>
-            <option>All time</option>
+          <select 
+            value={timeRange} 
+            onChange={(e) => setTimeRange(Number(e.target.value))}
+            className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-xl shadow-xs focus:outline-none cursor-pointer"
+          >
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
           </select>
           <button
             onClick={() => navigate('/compose')}
@@ -74,9 +146,8 @@ export const DashboardPage: React.FC = () => {
             <div className="text-3xl font-bold font-display text-slate-900 tracking-tight">
               {scheduledCount}
             </div>
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>+12% from last week</span>
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
+              <span>Ready in queue</span>
             </div>
           </div>
         </div>
@@ -94,8 +165,7 @@ export const DashboardPage: React.FC = () => {
               {sentCount}
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>+18% from last week</span>
+              <span>Delivered successfully</span>
             </div>
           </div>
         </div>
@@ -113,8 +183,7 @@ export const DashboardPage: React.FC = () => {
               {deliveryRate}%
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>+6% from last week</span>
+              <span>Overall dispatch success</span>
             </div>
           </div>
         </div>
@@ -132,7 +201,7 @@ export const DashboardPage: React.FC = () => {
               {failedCount}
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs text-rose-600 font-medium">
-              <span>-4% from last week</span>
+              <span>{failedCount === 0 ? 'No delivery failures' : 'Needs attention'}</span>
             </div>
           </div>
         </div>
@@ -159,46 +228,100 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         <div className="h-64 w-full relative">
-          <svg className="w-full h-full" viewBox="0 0 800 240" fill="none">
-            <line x1="0" y1="200" x2="800" y2="200" stroke="#F1F5F9" strokeWidth="1" />
-            <line x1="0" y1="150" x2="800" y2="150" stroke="#F1F5F9" strokeWidth="1" />
-            <line x1="0" y1="100" x2="800" y2="100" stroke="#F1F5F9" strokeWidth="1" />
-            <line x1="0" y1="50" x2="800" y2="50" stroke="#F1F5F9" strokeWidth="1" />
+          <svg className="w-full h-full" viewBox={`0 0 ${chartWidth} ${chartHeight}`} fill="none">
+            {/* Grid lines */}
+            <line x1="0" y1={paddingY} x2={chartWidth} y2={paddingY} stroke="#F1F5F9" strokeWidth="1" />
+            <line x1="0" y1={paddingY + plotHeight * 0.33} x2={chartWidth} y2={paddingY + plotHeight * 0.33} stroke="#F1F5F9" strokeWidth="1" />
+            <line x1="0" y1={paddingY + plotHeight * 0.66} x2={chartWidth} y2={paddingY + plotHeight * 0.66} stroke="#F1F5F9" strokeWidth="1" />
+            <line x1="0" y1={paddingY + plotHeight} x2={chartWidth} y2={paddingY + plotHeight} stroke="#F1F5F9" strokeWidth="1" />
 
-            <path
-              d="M 50 180 C 150 160, 250 80, 400 90 C 550 100, 650 40, 750 60"
-              stroke="#6366F1"
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-            <path
-              d="M 50 195 C 150 185, 250 130, 400 120 C 550 110, 650 70, 750 85"
-              stroke="#10B981"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-            <path
-              d="M 50 220 C 150 215, 250 210, 400 200 C 550 205, 650 190, 750 195"
-              stroke="#EF4444"
-              strokeWidth="1.5"
-              strokeDasharray="4 4"
-              strokeLinecap="round"
-            />
+            {/* Scheduled Path */}
+            {scheduledPath && (
+              <path
+                d={scheduledPath}
+                stroke="#6366F1"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+            )}
 
-            <circle cx="400" cy="90" r="4" fill="#6366F1" stroke="#FFFFFF" strokeWidth="2" />
-            <circle cx="750" cy="60" r="4" fill="#6366F1" stroke="#FFFFFF" strokeWidth="2" />
-            <circle cx="400" cy="120" r="4" fill="#10B981" stroke="#FFFFFF" strokeWidth="2" />
-            <circle cx="750" cy="85" r="4" fill="#10B981" stroke="#FFFFFF" strokeWidth="2" />
+            {/* Sent Path */}
+            {sentPath && (
+              <path
+                d={sentPath}
+                stroke="#10B981"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+            )}
+
+            {/* Failed Path */}
+            {failedPath && (
+              <path
+                d={failedPath}
+                stroke="#EF4444"
+                strokeWidth="1.5"
+                strokeDasharray="4 4"
+                strokeLinecap="round"
+                fill="none"
+              />
+            )}
+
+            {/* Data Points */}
+            {scheduledPoints.map((pt, i) => (
+              <circle
+                key={`sch-${i}`}
+                cx={pt.x}
+                cy={pt.y}
+                r="3.5"
+                fill="#6366F1"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+              >
+                <title>{`${pt.label} Scheduled: ${pt.val}`}</title>
+              </circle>
+            ))}
+
+            {sentPoints.map((pt, i) => (
+              <circle
+                key={`sent-${i}`}
+                cx={pt.x}
+                cy={pt.y}
+                r="3.5"
+                fill="#10B981"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+              >
+                <title>{`${pt.label} Sent: ${pt.val}`}</title>
+              </circle>
+            ))}
+
+            {failedPoints.map((pt, i) => (
+              <circle
+                key={`failed-${i}`}
+                cx={pt.x}
+                cy={pt.y}
+                r="3.5"
+                fill="#EF4444"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+              >
+                <title>{`${pt.label} Failed: ${pt.val}`}</title>
+              </circle>
+            ))}
           </svg>
 
-          <div className="flex justify-between text-[11px] text-slate-400 font-mono mt-2 px-4">
-            <span>Jun 10</span>
-            <span>Jun 11</span>
-            <span>Jun 12</span>
-            <span>Jun 13</span>
-            <span>Jun 14</span>
-            <span>Jun 15</span>
-            <span>Jun 16</span>
+          {/* Dynamic Date Labels */}
+          <div className="flex justify-between text-[11px] text-slate-400 font-mono mt-2 px-2">
+            {series.filter((_, idx) => {
+              if (series.length <= 7) return true;
+              if (series.length <= 30) return idx % 5 === 0 || idx === series.length - 1;
+              return idx % 15 === 0 || idx === series.length - 1;
+            }).map((s) => (
+              <span key={s.date}>{s.label}</span>
+            ))}
           </div>
         </div>
       </div>
