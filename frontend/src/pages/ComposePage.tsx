@@ -10,7 +10,6 @@ import {
   ArrowRight, 
   ArrowLeft, 
   AlertCircle, 
-  Sparkles
 } from 'lucide-react';
 import { RichEditor } from '../components/RichEditor';
 import type { Sender } from '../types';
@@ -204,83 +203,57 @@ export const ComposePage: React.FC = () => {
 
       {/* Step 1: Content */}
       {currentStep === 1 && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">From Sender</label>
-              <select
-                value={senderId}
-                onChange={(e) => setSenderId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              >
-                {senders?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.fromEmail}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-5">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">From Sender</label>
+            <select
+              value={senderId}
+              onChange={(e) => setSenderId(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            >
+              {senders?.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.fromEmail}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Subject</label>
-              <input
-                type="text"
-                placeholder="Enter a compelling subject line..."
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Subject</label>
+            <input
+              type="text"
+              placeholder="Enter a compelling subject line..."
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Email Body</label>
-              <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
-                <RichEditor value={bodyHtml} onChange={setBodyHtml} />
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-between items-center">
-              <span className="text-xs text-slate-400">Step 1 of 4</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!subject.trim()) {
-                    setErrorMessage('Please enter an email subject');
-                    return;
-                  }
-                  setErrorMessage(null);
-                  setCurrentStep(2);
-                }}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-              >
-                <span>Next: Add Leads</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Email Body</label>
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+              <RichEditor value={bodyHtml} onChange={setBodyHtml} />
             </div>
           </div>
 
-          {/* Live Preview Card */}
-          <div className="lg:col-span-4 bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles className="w-4 h-4 text-indigo-600" />
-                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Preview</span>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2 text-xs">
-                <div className="font-semibold text-slate-900 border-b border-slate-100 pb-2">
-                  Subject: <span className="font-normal text-slate-600">{subject || 'Your subject line...'}</span>
-                </div>
-                <div 
-                  className="prose prose-xs text-slate-600 max-h-60 overflow-y-auto pt-1"
-                  dangerouslySetInnerHTML={{
-                    __html: bodyHtml || '<p class="text-slate-400 italic">Hi there,<br/>This is a preview of how your email will look to the recipient.<br/><br/>Best,<br/>Alex</p>',
-                  }}
-                />
-              </div>
-            </div>
-            <div className="mt-4 text-[11px] text-slate-400">
-              Personalization tags and clean typography sanitized server-side.
-            </div>
+          <div className="pt-3 flex justify-between items-center border-t border-slate-100">
+            <span className="text-xs text-slate-400">Step 1 of 4</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (!subject.trim()) {
+                  setErrorMessage('Please enter an email subject');
+                  return;
+                }
+                setErrorMessage(null);
+                setCurrentStep(2);
+              }}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            >
+              <span>Next: Add Leads</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
