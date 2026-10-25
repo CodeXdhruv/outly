@@ -1,4 +1,4 @@
-# Outly Email Scheduler ("ONG")
+# Outly Email Scheduler 
 
 High-reliability email scheduler and Gmail-style campaign management dashboard.
 Built with Node 20, TypeScript, Express, Prisma, BullMQ, Redis, PostgreSQL, and React (Vite + Tailwind).
