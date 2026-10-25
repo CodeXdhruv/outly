@@ -57,11 +57,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             <NavLink to="/dashboard" className="flex items-center gap-3">
               <img
                 src={logoSvg}
-                alt="ReachInbox"
+                alt="Outly"
                 className="w-8 h-8 rounded-lg shadow-sm shadow-indigo-500/20"
               />
               <span className="font-display font-bold text-lg tracking-tight text-slate-900">
-                Reach<span className="text-indigo-600">Inbox</span>
+                Out<span className="text-indigo-600">ly</span>
               </span>
             </NavLink>
           </div>

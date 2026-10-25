@@ -19,11 +19,11 @@ export const LandingPage: React.FC = () => {
           <Link to="/" className="flex items-center gap-2.5">
             <img
               src={logoSvg}
-              alt="ReachInbox"
+              alt="Outly"
               className="w-7 h-7 rounded-lg shadow-xs"
             />
             <span className="font-display font-bold text-lg tracking-tight text-slate-900">
-              Reach<span className="text-indigo-600">Inbox</span>
+              Out<span className="text-indigo-600">ly</span>
             </span>
           </Link>
 
@@ -80,7 +80,7 @@ export const LandingPage: React.FC = () => {
                   <div className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]/40 shadow-xs" />
                 </div>
                 <div className="text-[11px] text-slate-500 font-mono bg-white px-3 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
-                  app.reachinbox.ai/scheduler
+                  app.outly.ai/scheduler
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-600 font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -162,8 +162,8 @@ export const LandingPage: React.FC = () => {
       <footer className="border-t border-slate-100 py-6 text-xs text-slate-500 bg-white">
         <div className="max-w-5xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <img src={logoSvg} alt="ReachInbox" className="w-3.5 h-3.5 rounded" />
-            <span className="font-semibold text-slate-700">ReachInbox</span>
+            <img src={logoSvg} alt="Outly" className="w-3.5 h-3.5 rounded" />
+            <span className="font-semibold text-slate-700">Outly</span>
             <span>© 2026</span>
           </div>
           <div className="flex gap-5">

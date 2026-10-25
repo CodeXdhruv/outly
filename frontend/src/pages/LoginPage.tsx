@@ -21,11 +21,11 @@ export const LoginPage: React.FC = () => {
             <div className="flex items-center gap-2.5 mb-8">
               <img
                 src={logoSvg}
-                alt="ReachInbox"
+                alt="Outly"
                 className="w-8 h-8 rounded-lg shadow-sm shadow-indigo-500/20"
               />
               <span className="font-display font-bold text-lg text-slate-900 tracking-tight">
-                Reach<span className="text-indigo-600">Inbox</span>
+                Out<span className="text-indigo-600">ly</span>
               </span>
             </div>
 
@@ -123,7 +123,7 @@ export const LoginPage: React.FC = () => {
         <div className="hidden md:flex flex-col justify-center items-center bg-slate-50/50 border-l border-slate-100 overflow-hidden relative">
           <img
             src={authAsset}
-            alt="ReachInbox Smarter Outreach"
+            alt="Outly Smarter Outreach"
             className="w-full h-full object-cover object-center"
           />
         </div>
