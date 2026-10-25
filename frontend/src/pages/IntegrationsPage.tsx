@@ -1,17 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
   CheckCircle2, 
   Sliders, 
-  MessageSquare
+  MessageSquare,
+  ShieldAlert,
+  ShieldCheck,
+  Clock,
+  Send,
+  Users,
+  Gauge,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '../App';
-import type { SlackStatus } from '../types';
+import type { SlackStatus, SystemSettings } from '../types';
 
 export const IntegrationsPage: React.FC = () => {
   const { user } = useAuth();
-  const [hourlyLimit, setHourlyLimit] = useState(100);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Form states for sending settings
+  const [maxEmailsPerHourPerSender, setMaxEmailsPerHourPerSender] = useState(100);
+  const [maxEmailsPerHourGlobal, setMaxEmailsPerHourGlobal] = useState(200);
+  const [minDelayBetweenSendsMs, setMinDelayBetweenSendsMs] = useState(2000);
+  const [maxRecipients, setMaxRecipients] = useState(5000);
 
   const { data: slack, refetch: refetchSlack } = useQuery<SlackStatus>({
     queryKey: ['integrations', 'slack'],
@@ -22,15 +36,63 @@ export const IntegrationsPage: React.FC = () => {
     },
   });
 
+  const { data: settings, isLoading: isLoadingSettings, refetch: refetchSettings } = useQuery<SystemSettings>({
+    queryKey: ['settings', 'system'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings');
+      if (!res.ok) throw new Error('Failed to fetch sending settings');
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (settings) {
+      setMaxEmailsPerHourPerSender(settings.maxEmailsPerHourPerSender);
+      setMaxEmailsPerHourGlobal(settings.maxEmailsPerHourGlobal);
+      setMinDelayBetweenSendsMs(settings.minDelayBetweenSendsMs);
+      setMaxRecipients(settings.maxRecipients);
+    }
+  }, [settings]);
+
   const handleDisconnectSlack = async () => {
     await fetch('/api/integrations/slack', { method: 'DELETE' });
     await refetchSlack();
   };
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+    if (!user?.isAdmin) {
+      setErrorMessage('Admin privileges required to modify sending rate limits.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          maxEmailsPerHourPerSender,
+          maxEmailsPerHourGlobal,
+          minDelayBetweenSendsMs,
+          maxRecipients,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || 'Failed to update system settings');
+      }
+
+      await refetchSettings();
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error updating settings');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -40,7 +102,7 @@ export const IntegrationsPage: React.FC = () => {
           Integrations & Settings
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Connect your accounts and configure sending guardrails.
+          Connect your accounts and configure sending guardrails and rate limits.
         </p>
       </div>
 
@@ -84,6 +146,11 @@ export const IntegrationsPage: React.FC = () => {
                 <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                   <CheckCircle2 className="w-3 h-3" /> Connected
                 </span>
+                {user?.isAdmin && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                    <ShieldCheck className="w-3 h-3" /> Admin
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 {user?.email || 'Logged in via Google OAuth 2.0'}
@@ -145,51 +212,167 @@ export const IntegrationsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Sending Limits Guardrail */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <Sliders className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="font-display font-bold text-base text-slate-900">Sending Safety Limits</h2>
-            <p className="text-xs text-slate-500">Configure global hourly rate caps to protect sender reputation</p>
+      {/* Sending Limits Guardrail & Rate Controls */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <Sliders className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-display font-bold text-base text-slate-900">Mail Dispatch & Pacing Settings</h2>
+                {user?.isAdmin ? (
+                  <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" /> Admin Configurable
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                    <ShieldAlert className="w-3 h-3" /> View Only (Admin Required)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Live worker throttles: controls dispatch pace, hourly caps, and batch limits across all campaigns.
+              </p>
+            </div>
           </div>
         </div>
 
-        <form onSubmit={handleSaveSettings} className="space-y-4 max-w-lg">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Max Emails per Hour (per sender)
-            </label>
-            <input
-              type="number"
-              value={hourlyLimit}
-              onChange={(e) => setHourlyLimit(Number(e.target.value))}
-              min={10}
-              max={1000}
-              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-mono"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Emails exceeding this rate limit in a given hour will be automatically rescheduled with jitter.
-            </p>
+        {errorMessage && (
+          <div className="p-3 text-xs bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span>{errorMessage}</span>
           </div>
+        )}
 
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              type="submit"
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
-            >
-              Save Configuration
-            </button>
-            {savedSuccess && (
-              <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Saved successfully
-              </span>
-            )}
+        {isLoadingSettings ? (
+          <div className="py-8 flex items-center justify-center text-xs text-slate-400 gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+            Loading live sending policies...
           </div>
-        </form>
+        ) : (
+          <form onSubmit={handleSaveSettings} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Max Emails per hour per sender */}
+              <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-indigo-600" />
+                    Hourly Limit (Per Sender)
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">emails / hr</span>
+                </div>
+                <input
+                  type="number"
+                  disabled={!user?.isAdmin}
+                  value={maxEmailsPerHourPerSender}
+                  onChange={(e) => setMaxEmailsPerHourPerSender(Number(e.target.value))}
+                  min={1}
+                  max={10000}
+                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-mono disabled:bg-slate-100 disabled:text-slate-400"
+                />
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Hard ceiling for any single sender address per UTC hour. Excess emails defer automatically.
+                </p>
+              </div>
+
+              {/* Global max emails per hour */}
+              <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Gauge className="w-3.5 h-3.5 text-indigo-600" />
+                    Global Hourly Cap (All Senders)
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">emails / hr</span>
+                </div>
+                <input
+                  type="number"
+                  disabled={!user?.isAdmin}
+                  value={maxEmailsPerHourGlobal}
+                  onChange={(e) => setMaxEmailsPerHourGlobal(Number(e.target.value))}
+                  min={1}
+                  max={50000}
+                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-mono disabled:bg-slate-100 disabled:text-slate-400"
+                />
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Total system-wide throughput limit across all active senders and concurrent campaigns combined.
+                </p>
+              </div>
+
+              {/* Minimum delay between consecutive emails */}
+              <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    Minimum Dispatch Delay
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">milliseconds</span>
+                </div>
+                <input
+                  type="number"
+                  disabled={!user?.isAdmin}
+                  value={minDelayBetweenSendsMs}
+                  onChange={(e) => setMinDelayBetweenSendsMs(Number(e.target.value))}
+                  min={500}
+                  max={60000}
+                  step={100}
+                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-mono disabled:bg-slate-100 disabled:text-slate-400"
+                />
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Enforces spacing between emails from the same sender (e.g. 2000ms = 2s delay) to avoid anti-spam bans.
+                </p>
+              </div>
+
+              {/* Max recipients per campaign */}
+              <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    Max Recipients Per Campaign
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">recipients</span>
+                </div>
+                <input
+                  type="number"
+                  disabled={!user?.isAdmin}
+                  value={maxRecipients}
+                  onChange={(e) => setMaxRecipients(Number(e.target.value))}
+                  min={10}
+                  max={50000}
+                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-mono disabled:bg-slate-100 disabled:text-slate-400"
+                />
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Safety ceiling on how many leads can be uploaded or scheduled in a single campaign batch.
+                </p>
+              </div>
+            </div>
+
+            {user?.isAdmin ? (
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {isSaving ? 'Saving Policy...' : 'Save Sending Settings'}
+                </button>
+                {savedSuccess && (
+                  <span className="text-xs text-emerald-600 font-medium flex items-center gap-1 animate-fade-in">
+                    <CheckCircle2 className="w-4 h-4" /> Changes saved & applied immediately to queue workers!
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500 border border-slate-200">
+                You are currently viewing these parameters with member permissions. Contact an admin to request policy changes.
+              </div>
+            )}
+          </form>
+        )}
       </div>
     </div>
   );
 };
+

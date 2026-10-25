@@ -3,10 +3,11 @@ import type { Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { prisma, redis } from './db.js';
-import { requireAuth } from './auth.js';
+import { requireAuth, requireAdmin } from './auth.js';
 import { parseRecipients, sanitizeBody } from './email.js';
 import { enqueueEmailsBulk } from './queue.js';
 import { searchEmails, bulkIndexEmails } from './search.js';
+import { getSystemSettings, updateSystemSettings } from './rateLimit.js';
 import { config } from './config.js';
 import { logger } from './config.js';
 
@@ -210,6 +211,17 @@ routes.post('/api/campaigns', requireAuth, async (req: Request, res: Response) =
       invalid: 0,
       duplicates: 0,
       status: existingCampaign.status,
+    });
+    return;
+  }
+
+  const settings = await getSystemSettings();
+  if (req.body?.recipients && Array.isArray(req.body.recipients) && req.body.recipients.length > settings.maxRecipients) {
+    res.status(400).json({
+      error: {
+        code: 'MAX_RECIPIENTS_EXCEEDED',
+        message: `Recipient count exceeds system limit of ${settings.maxRecipients}`,
+      },
     });
     return;
   }
@@ -691,3 +703,30 @@ routes.get('/api/notifications', requireAuth, async (req: Request, res: Response
 
   res.json({ items: items.slice(0, 8) });
 });
+
+// 12. System Sending Settings
+routes.get('/api/settings', requireAuth, async (req: Request, res: Response) => {
+  const settings = await getSystemSettings();
+  res.json(settings);
+});
+
+const updateSettingsSchema = z.object({
+  maxEmailsPerHourPerSender: z.coerce.number().int().min(1).max(50000),
+  maxEmailsPerHourGlobal: z.coerce.number().int().min(1).max(100000),
+  minDelayBetweenSendsMs: z.coerce.number().int().min(500).max(60000),
+  maxRecipients: z.coerce.number().int().min(1).max(50000),
+});
+
+routes.put('/api/settings', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const parseResult = updateSettingsSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({
+      error: { code: 'INVALID_INPUT', message: parseResult.error.issues[0]?.message || 'Invalid settings input' },
+    });
+    return;
+  }
+
+  const updated = await updateSystemSettings(parseResult.data);
+  res.json(updated);
+});
+

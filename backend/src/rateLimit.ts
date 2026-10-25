@@ -58,15 +58,63 @@ export interface ReservationResult {
   reason: 'sender_cap' | 'global_cap' | 'spacing' | null;
 }
 
+export interface SystemSettings {
+  maxEmailsPerHourPerSender: number;
+  maxEmailsPerHourGlobal: number;
+  minDelayBetweenSendsMs: number;
+  maxRecipients: number;
+}
+
+const SETTINGS_KEY = 'system:sending_settings';
+
+export async function getSystemSettings(): Promise<SystemSettings> {
+  try {
+    const raw = await redis.get(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        maxEmailsPerHourPerSender: Number(parsed.maxEmailsPerHourPerSender) || config.MAX_EMAILS_PER_HOUR_PER_SENDER,
+        maxEmailsPerHourGlobal: Number(parsed.maxEmailsPerHourGlobal) || config.MAX_EMAILS_PER_HOUR_GLOBAL,
+        minDelayBetweenSendsMs: Number(parsed.minDelayBetweenSendsMs) || config.MIN_DELAY_BETWEEN_SENDS_MS,
+        maxRecipients: Number(parsed.maxRecipients) || config.MAX_RECIPIENTS,
+      };
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to read dynamic system settings from Redis, falling back to config');
+  }
+
+  return {
+    maxEmailsPerHourPerSender: config.MAX_EMAILS_PER_HOUR_PER_SENDER,
+    maxEmailsPerHourGlobal: config.MAX_EMAILS_PER_HOUR_GLOBAL,
+    minDelayBetweenSendsMs: config.MIN_DELAY_BETWEEN_SENDS_MS,
+    maxRecipients: config.MAX_RECIPIENTS,
+  };
+}
+
+export async function updateSystemSettings(newSettings: Partial<SystemSettings>): Promise<SystemSettings> {
+  const current = await getSystemSettings();
+  const updated: SystemSettings = {
+    maxEmailsPerHourPerSender: Math.max(1, Number(newSettings.maxEmailsPerHourPerSender ?? current.maxEmailsPerHourPerSender)),
+    maxEmailsPerHourGlobal: Math.max(1, Number(newSettings.maxEmailsPerHourGlobal ?? current.maxEmailsPerHourGlobal)),
+    minDelayBetweenSendsMs: Math.max(500, Number(newSettings.minDelayBetweenSendsMs ?? current.minDelayBetweenSendsMs)),
+    maxRecipients: Math.max(1, Number(newSettings.maxRecipients ?? current.maxRecipients)),
+  };
+
+  await redis.set(SETTINGS_KEY, JSON.stringify(updated));
+  logger.info({ updated }, 'Updated dynamic sending system settings');
+  return updated;
+}
+
 export async function reserveSendSlot(
   senderId: string,
   senderLimit: number,
   spacingMs: number,
   nowMs: number = Date.now()
 ): Promise<ReservationResult> {
-  const effectiveSenderLimit = Math.min(senderLimit, config.MAX_EMAILS_PER_HOUR_PER_SENDER);
-  const globalLimit = config.MAX_EMAILS_PER_HOUR_GLOBAL;
-  const effectiveSpacingMs = Math.max(spacingMs, config.MIN_DELAY_BETWEEN_SENDS_MS);
+  const currentSettings = await getSystemSettings();
+  const effectiveSenderLimit = Math.min(senderLimit, currentSettings.maxEmailsPerHourPerSender);
+  const globalLimit = currentSettings.maxEmailsPerHourGlobal;
+  const effectiveSpacingMs = Math.max(spacingMs, currentSettings.minDelayBetweenSendsMs);
 
   const res = (await redis.eval(
     RESERVE_SCRIPT,
@@ -99,3 +147,4 @@ export async function releaseReservation(senderId: string, nowMs: number = Date.
     logger.error({ err, senderId }, 'Failed to release reservation counter');
   }
 }
+

@@ -3,7 +3,7 @@ import { redis } from './db.js';
 import { prisma } from './db.js';
 import { logger } from './config.js';
 import { config } from './config.js';
-import { reserveSendSlot, releaseReservation } from './rateLimit.js';
+import { reserveSendSlot, releaseReservation, getSystemSettings } from './rateLimit.js';
 import { sendEmailViaSmtp, classifySmtpError } from './email.js';
 import { notifyLimitHit } from './slack.js';
 import { indexEmail } from './search.js';
@@ -27,7 +27,8 @@ export async function processEmailJob(job: Job<{ emailId: string }>) {
   }
 
   // Rate-limit check & reservation
-  const spacingMs = Math.max(email.campaign.delaySeconds * 1000, config.MIN_DELAY_BETWEEN_SENDS_MS);
+  const settings = await getSystemSettings();
+  const spacingMs = Math.max(email.campaign.delaySeconds * 1000, settings.minDelayBetweenSendsMs);
   const hourlyLimit = email.campaign.hourlyLimit;
 
   const reservation = await reserveSendSlot(email.senderId, hourlyLimit, spacingMs, now);

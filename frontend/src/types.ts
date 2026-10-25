@@ -48,3 +48,11 @@ export interface SlackStatus {
   channel?: string;
   revoked?: boolean;
 }
+
+export interface SystemSettings {
+  maxEmailsPerHourPerSender: number;
+  maxEmailsPerHourGlobal: number;
+  minDelayBetweenSendsMs: number;
+  maxRecipients: number;
+}
+

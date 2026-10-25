@@ -71,11 +71,12 @@ describe('Slack Security and State', () => {
 describe('Rate limiting with Redis Lua', () => {
   it('enforces atomic reservation and spacing', async () => {
     const senderId = 'test-sender-' + Date.now();
-    const res1 = await reserveSendSlot(senderId, 2, 500);
+    const t0 = Date.now();
+    const res1 = await reserveSendSlot(senderId, 2, 500, t0);
     expect(res1.ok).toBe(true);
 
     // Spacing immediately after
-    const res2 = await reserveSendSlot(senderId, 2, 500);
+    const res2 = await reserveSendSlot(senderId, 2, 500, t0 + 10);
     expect(res2.ok).toBe(false);
     expect(res2.reason).toBe('spacing');
   });
