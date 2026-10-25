@@ -158,20 +158,33 @@ export async function notifyLimitHit(params: {
 }
 
 export function setupSlackRoutes(app: any) {
-  app.get('/integrations/slack/connect', async (req: Request, res: Response) => {
-    if (!req.session?.user) {
+  const handleConnect = async (req: Request, res: Response) => {
+    // If ticket provided in query (for cross-origin/Vercel), resolve user from Redis
+    const ticket = req.query.auth_ticket as string | undefined;
+    let userId = req.session?.user?.id;
+    if (!userId && ticket) {
+      const resolved = await redis.get(`auth_ticket:${ticket}`);
+      if (resolved) userId = resolved;
+    }
+
+    if (!userId) {
       res.redirect(`${config.WEB_ORIGIN}/login`);
       return;
     }
 
-    const { state, nonce } = signSlackState(req.session.user.id);
+    const { state, nonce } = signSlackState(userId);
     await redis.set(`slack:nonce:${nonce}`, '1', 'EX', 600);
 
     const redirectUri = encodeURIComponent(config.SLACK_CALLBACK_URL);
     const authorizeUrl = `https://slack.com/oauth/v2/authorize?client_id=${config.SLACK_CLIENT_ID}&scope=incoming-webhook&redirect_uri=${redirectUri}&state=${state}`;
 
     res.redirect(authorizeUrl);
-  });
+  };
+
+  app.get('/integrations/slack/connect', handleConnect);
+  app.get('/integrations/slack/authorize', handleConnect);
+  app.get('/api/integrations/slack/authorize', handleConnect);
+  app.get('/api/integrations/slack/connect', handleConnect);
 
   app.get('/integrations/slack/callback', async (req: Request, res: Response) => {
     const { code, state } = req.query;

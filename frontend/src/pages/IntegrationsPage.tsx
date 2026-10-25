@@ -132,12 +132,15 @@ export const IntegrationsPage: React.FC = () => {
               Disconnect Slack
             </button>
           ) : (
-            <a
-              href="/api/integrations/slack/authorize"
+            <button
+              onClick={() => {
+                const ticket = localStorage.getItem('auth_ticket');
+                window.location.href = `/integrations/slack/connect${ticket ? `?auth_ticket=${ticket}` : ''}`;
+              }}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
             >
               Connect Slack
-            </a>
+            </button>
           )}
         </div>
       </div>
